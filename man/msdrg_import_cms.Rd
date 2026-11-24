@@ -4,12 +4,17 @@
 \alias{msdrg_import_cms}
 \title{Import CMS MS-DRG logic tables from a mainframe "Misc" release folder}
 \usage{
-msdrg_import_cms(dir, version)
+msdrg_import_cms(dir, version, hac_formulas = NULL)
 }
 \arguments{
 \item{dir}{Path to the folder containing the flat files.}
 
 \item{version}{Version label, e.g. \code{"44.0"}. Stored in the result.}
+
+\item{hac_formulas}{Optional data frame with columns \code{hac_number} and
+\code{formula}: the hospital-acquired-condition criteria formulas. CMS ships
+these only inside the grouper's binary data, not in the flat files; the
+bundled versions carry them. Without them the final DRG ignores HACs.}
 }
 \value{
 A named list of tibbles with class \code{msdrg_tables}.

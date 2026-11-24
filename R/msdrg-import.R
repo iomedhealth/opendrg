@@ -11,15 +11,26 @@
 #'
 #' @param dir Path to the folder containing the flat files.
 #' @param version Version label, e.g. `"44.0"`. Stored in the result.
+#' @param hac_formulas Optional data frame with columns `hac_number` and
+#'   `formula`: the hospital-acquired-condition criteria formulas. CMS ships
+#'   these only inside the grouper's binary data, not in the flat files; the
+#'   bundled versions carry them. Without them the final DRG ignores HACs.
 #' @return A named list of tibbles with class `msdrg_tables`.
 #' @export
 #' @examples
 #' \dontrun{
 #' tbls <- msdrg_import_cms("path/to/CMSDRG440_MF_Java_Misc", version = "44.0")
 #' }
-msdrg_import_cms <- function(dir, version) {
+msdrg_import_cms <- function(dir, version, hac_formulas = NULL) {
   stopifnot(is.character(dir), length(dir) == 1, dir.exists(dir))
   stopifnot(is.character(version), length(version) == 1)
+  if (!is.null(hac_formulas)) {
+    require_columns(hac_formulas, c("hac_number", "formula"), "hac_formulas")
+    hac_formulas <- tibble::tibble(
+      hac_number = as.integer(hac_formulas$hac_number),
+      formula = as.character(hac_formulas$formula)
+    )
+  }
 
   required <- c("DRGLOGIC", "DXPATERN", "PRPATERN", "DXLIST", "PRLIST",
                 "DXATTLST", "PRATTLST", "EXCLUSN", "PRCLSTRS", "MDCDSC", "DRGDSC4")
@@ -137,7 +148,8 @@ msdrg_import_cms <- function(dir, version) {
       exclusions = exclusions,
       clusters = clusters,
       mdc_desc = mdc_desc,
-      drg_desc = drg_desc
+      drg_desc = drg_desc,
+      hac_formulas = hac_formulas
     ),
     class = "msdrg_tables"
   )

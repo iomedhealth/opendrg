@@ -59,7 +59,8 @@ dev/oracle/
     testdb_v440_trace_codes.csv      per code, from the trace: attributes, dxcat, raw severity, HAC lists, cluster ids
     testdb_v440_vs_embedded.csv      per-claim comparison of the v44.0 run with CMS's embedded expectation
     testdb_v440_summary.md           generated summary tables (reproduced below)
-    testdb_v440_expected_poa_unknown.csv (+ _dx, _pr, _vs_embedded, _summary)  same run with poaReportingExempt = UNKNOWN
+    testdb_v440_expected_poa_unknown.csv  same run with poaReportingExempt = UNKNOWN for every claim
+      (+ testdb_v440_expected_dx_poa_unknown.csv, _expected_pr_poa_unknown.csv, _vs_embedded_poa_unknown.csv, _summary_poa_unknown.md)
     testdb_v440_poa_sensitivity.csv  claims whose results differ between the two POA settings
     testdb_v440_cms_embedded*.csv    CMS's own expectations parsed out of TESTDB columns 839-2000 (any version)
     v440_hac_formulas.csv            FormulaAccess.getFormulasForHacList(n), n = 1..30 (14 rows)
@@ -78,7 +79,7 @@ dev/oracle/
 ## How to re-run
 
 ```bash
-/Users/gabriel.maeztu/repos/open-grd/dev/oracle/java/run.sh            # everything (~15 s)
+/Users/gabriel.maeztu/repos/open-grd/dev/oracle/java/run.sh            # everything (~15 s): fixtures, POA-UNKNOWN run, table dump, validation
 /Users/gabriel.maeztu/repos/open-grd/dev/oracle/java/run.sh --version 430 --mode api   # another bundled version -> output/testdb_v430_*
 /Users/gabriel.maeztu/repos/open-grd/dev/oracle/java/run.sh --help
 ```
@@ -267,7 +268,97 @@ MCC, CC, MCC_EXCLUDED, CC_EXCLUDED, MCC_EXCLUDED_BY_DRG_LOGIC, CC_EXCLUDED_BY_DR
 ccmcc_category_mf (0-8), poa_error_code, n_hacs, hacs ("05:HAC_CRITERIA_MET;..."), flags_api
 (getLegacyFlagString), flags_mf (25-char mainframe block)`.
 
-`testdb_v440_expected_pr.csv`: `claim_id, seq, code, recognized, affects_drg (+_int), is_or_procedure, hac_usage ("HAC_08;HAC_10"), flags_api, flags_mf`.
+`testdb_v440_expected_pr.csv`: `claim_id, seq, code, recognized, affects_drg (+_int), is_or_procedure, hac_usage ("HAC_08;HAC_10"), cluster_ids ("Z@7093", from the trace — the clusters this code was used in), flags_api, flags_mf`.
+
+What the output model does **not** expose per procedure: cluster membership, the bilateral /
+fusion-count / multiple-trauma function results (`BilateralNode` marks `CodeFlag.BILATERAL` on
+internal `MsdrgProcedureCode` objects that never reach `MsdrgOutputPrCode`). Cluster ids are
+therefore taken from the trace; the bilateral/fusion outcome is visible only indirectly through the
+matched formula in `testdb_v440_trace.csv` (e.g. claim 9375: `MDC8:DRG461:[MCC & BILATERAL]` with
+matched attributes `righthip,lefthip,MCC`).
+
+`testdb_v440_trace.csv` — per claim, parsed from the grouper's own `TraceUtility` text:
+
+| column | meaning |
+|---|---|
+| `clusters` | procedure clusters recognised on the claim, `code{mdc restriction set}`, `;`-separated, e.g. `Z@7093{10\|29}` |
+| `initial_mdc_path` / `final_mdc_path` | MDCs evaluated in order (`0>5>29`: pre-MDC, the PDX MDC, then the reroute to MDC 29 "unrelated OR procedure") |
+| `initial_matches` / `final_matches` | formula rows that matched, `MDCn:DRGd:[formula]`, `;`-separated; `DRG0` rows are reroute rows (the reroute target's own match is not traced by the grouper) |
+| `initial_matched_attributes` / `final_matched_attributes` | the attributes the matched formula consumed (`,`-separated, per match `;`-separated) |
+| `hac_formulas_matched` | e.g. `HAC 5 (SDX:HAC05)` |
+
+`testdb_v440_trace_codes.csv` — per code, parsed from the trace, `kind` = `PDX`/`SDX`/`PROC`/`CLUSTER`,
+`seq` aligned with the input files: `poa, mdc (PDX only), dxcat (PDX), clin_sig, severity (the code's
+own CC/MCC level before exclusions), hac (HAC lists the dx is on), attributes` (`|`-separated
+attribute list names as used in the formulas), `cluster_ids` (PROC), `mdc_suppression` (CLUSTER).
+The PDX attribute list in the trace is already filtered by MDC suppression; do not read the trace's
+"mask" for anything but the MDC path (the grouper de-duplicates attributes when printing it, which
+can hide an unsuppressed duplicate carried by a cluster).
+
+### Grouper data tables dumped from the binary (`v440_*.csv`)
+
+Produced by `oracle.DataDump` through the same DAOs the grouper uses
+(`new FormulaAccess(DataBlob.getInstance(options), 440)` etc.; see `GrouperChain.createChain`).
+
+* `v440_hac_formulas.csv` — `FormulaAccess.getFormulasForHacList(n)` for n = 1..30: 14 rows, one
+  formula per HAC 1-14, evaluated by `MsdrgHacProcessor.evaluateHacConditions` with the claim mask
+  (`hac_number, index, formula, formula_collection_id` (always 0, never set by the loader),
+  `hac_description`):
+
+  | HAC | formula |
+  |---|---|
+  | 1-5, 7, 9 | `SDX:HAC0n` |
+  | 6 | `SDX:hac06_sdx \| (SDX:hac06_sdx & SDX:hac06_show)` |
+  | 8, 10, 12, 13, 14 | `SDX:HACnn & hacnn_proc` |
+  | 11 | `PDX:hac11_pdx & SDX:hac11_sdx & hac11_proc` |
+
+* `v440_drg_formulas_from_binary.csv` — `FormulaAccess.getAllFormulaRowsByMdc(mdc)` for mdc 0..29,
+  sorted by `rank` as the grouper does (`list_index` = position in the DAO list). Columns:
+  `mdc, rank, list_index, drg, base_drg, surgical (MEDICAL/SURGICAL/NA), reroute_mdc, return_code,
+  formula, severity_suppression_operands, drg_severity, formula_collection_id`. `return_code` is
+  **derived** from the GRC tokens in the formula (`INVALID_DSTAT`→5, `INVALID_PDX`→7, `PDX_ECODE`→1,
+  `INVALID_AGE`→3, `INVALID_SEX`→4; `MsdrgSourceLogicLists`) — the binary row has no return-code
+  field, the grouper sets it from the matched token. 822 rows vs 794 in the mainframe `DRGLOGIC`
+  flat file; the difference is 26 `MDCnn` gate rows (formula `MDC05` etc., drg 0, rank 1 of each MDC,
+  not in the flat file) plus 2 rows only in the binary that look unreachable (MDC 5 rank 87
+  `(ANY:ami) & (ami)` and MDC 15 rank 2 `5`, both drg 0, no reroute, no GRC). After excluding the gate
+  rows, **all 794 DRGLOGIC rows are present in the binary with identical mdc, drg, base DRG,
+  reroute MDC, med/surg (`M`/`S`/blank ↔ `MEDICAL`/`SURGICAL`/`NA`), return code (flat `999` ↔
+  binary drg 0 on error rows), formula text and suppression operands, in the same evaluation
+  order**. `drg_severity` is only populated (1/2/3, 9 for DRG 998) on 37 rows.
+* `v440_hac_descriptions.csv`, `v440_mdc_descriptions.csv` (27: MDC 0-25 and 29),
+  `v440_drg_descriptions.csv` (768 DRGs; `base_drg_description` is filled only on the row whose
+  number is itself a base DRG).
+* `v440_clusters_from_binary.csv` — the cluster definitions for version 440 read straight from
+  `runtime_buffers/msdrg_combined.bin` (`Data.ClustersRoot` / `Data.CodeToClusterIdRoot`, filtered
+  on `Version.V440`) and cross-checked against `ClusterAccess.getData(...)` +
+  `ClusterChoices.contains(code)` + `DataAccess.getClusterId(code)` (4,084 clusters, all identical;
+  4 identical duplicate definitions of `Z@1626` with overlapping version lists ignored). One row per
+  `(cluster_code, choice, proc_code)`: 8,271 rows, `n_choices` (= PRCLSTRS `NUMREQUIREDPROCS`,
+  all 2/3/5/7/8), `suppression_mdcs` (`|`-joined integers), `code_indexed_to_cluster` (the code →
+  cluster index also lists it; always true). Cluster codes carry a `Z` prefix in the binary
+  (`Z@7093` = flat-file `@7093`); the triples are **identical** to `PRCLSTRS` (8,271 = 8,271, 0
+  only-in-either).
+* `v440_clusters_mdc_restriction_map.csv` — how `PRCLSTRS.MDCRESTRICTION` is encoded in the binary
+  (`ClusterData.suppressionMdcs`, what `MsdrgClusterDefinition.getMdcRestrictions()` returns):
+
+  | PRCLSTRS token | binary set | clusters |
+  |---|---|---|
+  | blank | `{99}` | 1,088 |
+  | `F` | `{29}` | 2 |
+  | `ALL` | `{1,2,…,25,29}` (all real MDCs 1-25 plus 29; **not** pre-MDC 0) | 392 |
+  | `05` / `09` / `11` | `{5}` / `{9}` / `{11}` | 2 / 18 / 6 |
+  | `05\|F`, `06\|F`, `08\|F`, `09\|F`, `10\|F`, `13\|F` | `{5,29}`, `{6,29}`, `{8,29}`, `{9,29}`, `{10,29}`, `{13,29}` | 142, 13, 5, 9, 1,620, 19 |
+  | `06\|13\|F`, `08\|10\|F` | `{6,13,29}`, `{8,10,29}` | 1, 767 |
+
+  So **`F` = MDC 29**, the pseudo-MDC the grouper uses for the Appendix-F "unrelated O.R.
+  procedure" DRGs 981-989 (`v440_mdc_descriptions.csv`: `29 = Unrelated Operating Room Procedures
+  (DRGs 981-989)`), **`ALL` = {1..25, 29}**, and **blank = {99}**, a sentinel bit that never equals
+  an evaluated MDC (i.e. no restriction). Semantics (`MsdrgClusters`, `ProcedureAttributeProcessor`,
+  `SuppressionContainsNode`): when a cluster is recognised, this set is stored as a bitset on the
+  cluster code and on the component procedure codes it consumed, and every attribute of those
+  component codes inherits it; while evaluating formulas for MDC *m*, a mask attribute whose bitset
+  contains *m* is ignored, so inside a restricted MDC only the cluster's own attributes count.
 
 `testdb_v440_cms_embedded.csv` / `_dx.csv` / `_pr.csv` — CMS's own expectations parsed from
 columns 839-2000 (fields as in the layout table; dx/pr flag blocks split into `valid, affects_drg,
@@ -347,7 +438,18 @@ the second dx block — v44.0 reports e.g. `052` (HAC 05, criteria not met) wher
 `002` (HAC number suppressed when criteria not met; see the comment in
 `MsdrgDiagnosisFlag.toString()`). Records not grouped: none.
 
-## Validation (`output/validation/`, produced by `run.sh` step 2: `--version auto --mode both`)
+### Sensitivity to `poaReportingExempt` (`testdb_v440_expected_poa_unknown.csv`, `testdb_v440_poa_sensitivity.csv`)
+
+Re-running every claim with `poaReportingExempt = UNKNOWN` (instead of the per-record X/Z value)
+changes **73 of 9,864 claims** — precisely the 73 claims on which a HAC formula was satisfied with a
+POA of `N` (`hac_status = FINAL_DRG_CHANGES` in the main run). With `UNKNOWN` the grouper cannot
+decide whether the hospital reports POA and makes them ungroupable: `final_grc` 0 → 10
+(`HAC_STATUS_INVALID_POA_N_OR_U`), `final_drg` → 999, `final_mdc` → 0, `final_severity` → `NONE`,
+`hac_status` → `FINAL_DRG_UNGROUPABLE`, GRFLGS last digit 2 → 3 (initial DRG unchanged). No other
+claim is affected (the 4 POALOG `X` claims carry no HAC). `EXEMPT` would instead mark every HAC
+`HAC_NOT_APPLICABLE_EXEMPT` and keep the initial DRG.
+
+## Validation (`output/validation/`, produced by `run.sh` step 4: `--version auto --mode both`)
 
 1. `testdb_vauto_wrapper_vs_embedded.csv`: CMS's own wrapper `Msdrg.processMsdrg(638-byte input)` run on
    macOS/JDK 27 reproduces the 1162-byte expectation of **every one of the 9,864 records byte for
@@ -393,6 +495,14 @@ the second dx block — v44.0 reports e.g. `052` (HAC 05, criteria not met) wher
 * 39.0/39.1 cannot be run through the v2 API; if needed, the wrapper path (`--mode wrapper`) gives
   their mainframe-format output (`testdb_vauto_wrapper_vs_embedded.csv` stores rtc/mdc/drg; the full
   output equals the embedded one anyway).
+* **Trace-derived columns** (`cluster_ids` in `testdb_v440_expected_pr.csv`, everything in
+  `testdb_v440_trace*.csv`) come from the grouper's human-readable `MsdrgOption.TRACE` text, not from
+  the output model; the parser is `TraceParser.java`. Attaching the trace consumer was verified not
+  to change a single output value (expected files identical with `--no-trace`). Bilateral / fusion /
+  multiple-trauma function results are not exposed anywhere; only the matched formula shows them.
+* The two "only in binary" DRG formula rows (MDC 5 `(ANY:ami) & (ami)`, MDC 15 `5`) and the `MDCnn`
+  gate rows are dumped as-is; whether an implementation needs them is for the DRGLOGIC diff to
+  decide (they never fire on TESTDB: no `initial_matches` in `testdb_v440_trace.csv` contains them).
 * Generated on 2026-11-24 with msdrg-core 44.0.0.3 / model-v2 2.12.2 / binary-access 1.6.4 /
   MSDRGMF440.jar (manifest Implementation-Version 44.0.0.0, data blob built 2026-08-25, revision
   `[128, 160, 288, 210, 115, 196, 214, 250, 238]`).

@@ -36,7 +36,7 @@ msdrg_group <- function(claims, diagnoses, procedures = NULL, tables = msdrg_tab
   hac <- msdrg_hac_pass(ctx, tbls, initial, poa_exempt)
   final <- msdrg_run_pass(ctx, tbls, hac_met = hac$hac_met, skip = hac$ungroupable)
 
-  msdrg_assemble_output(ctx, tbls, initial, final)
+  msdrg_assemble_output(ctx, tbls, initial, final, hac$ungroupable)
 }
 
 # ---------------------------------------------------------------------------
@@ -378,21 +378,109 @@ msdrg_follow_reroutes <- function(state, evaluate, apply_match, logic) {
 }
 
 # ---------------------------------------------------------------------------
-# Hospital-acquired conditions: SDX that meet HAC criteria are dropped from
-# severity in the final pass. Requires the CMS HAC formula table, which is
-# attached to the tables as `hac_formulas` when available.
+# Hospital-acquired conditions. Every secondary diagnosis on a HAC list whose
+# POA indicator is not Y/W and which is not CC-excluded is tested against its
+# HAC's criteria formula on the claim mask. Met codes are dropped from
+# severity in the final pass; invalid POA reporting on met HACs makes the
+# claim ungroupable (return codes 9, 10, 11, 15) depending on the hospital's
+# POA-reporting status.
 
 msdrg_hac_pass <- function(ctx, tbls, initial, poa_exempt) {
-  no_hac <- list(hac_met = ctx$sdx[0, c("claim_id", "seq")], ungroupable = initial[0, c("claim_id", "return_code")])
+  no_hac <- list(hac_met = ctx$sdx[0, c("claim_id", "seq")],
+                 ungroupable = tibble::tibble(claim_id = ctx$claims$claim_id[0], return_code = integer()))
   if (is.null(tbls$hac_formulas) || poa_exempt == "exempt") {
     return(no_hac)
   }
-  no_hac
+  sdx_hac <- ctx$sdx |>
+    dplyr::select("claim_id", "seq", "order", "code", "poa", "excluded", "hac_list") |>
+    tidyr::unnest("hac_list") |>
+    dplyr::rename(hac = "hac_list")
+  # Claims already ungroupable keep that result; CMS stops before HACs.
+  failed <- initial$claim_id[initial$return_code != 0L]
+  sdx_hac <- sdx_hac |> dplyr::filter(!.data$claim_id %in% failed)
+  if (nrow(sdx_hac) == 0) {
+    return(no_hac)
+  }
+
+  # Criteria formulas on the claim mask (no cluster suppression here).
+  ids <- unique(sdx_hac$claim_id)
+  terms <- tbls$hac_terms
+  dx_attr <- ctx$dx_attr |> dplyr::filter(.data$claim_id %in% ids)
+  pr_attr <- ctx$pr_attr |> dplyr::filter(.data$claim_id %in% ids)
+  wide <- tibble::tibble(claim_id = ids) |>
+    dplyr::left_join(msdrg_wide_dx(ids, dx_attr, terms, ctx), by = "claim_id") |>
+    dplyr::left_join(msdrg_wide_pr(ids, pr_attr, terms, exclude = msdrg_specials), by = "claim_id") |>
+    dplyr::left_join(ctx$flags, by = "claim_id")
+  hits <- purrr::map2_dfr(tbls$hac_formulas$hac_number, tbls$hac_formulas$expr, function(h, expr) {
+    tibble::tibble(claim_id = ids, hac = h, hit = dplyr::coalesce(rlang::eval_tidy(expr, data = wide), FALSE))
+  })
+
+  show <- dx_attr |>
+    dplyr::filter(.data$attribute == "hac06_show") |>
+    dplyr::distinct(.data$claim_id, .data$seq) |>
+    dplyr::mutate(show = TRUE)
+  st <- sdx_hac |>
+    dplyr::left_join(hits, by = c("claim_id", "hac")) |>
+    dplyr::left_join(show, by = c("claim_id", "seq")) |>
+    dplyr::mutate(
+      show = dplyr::coalesce(.data$show, FALSE),
+      hit = dplyr::coalesce(.data$hit, FALSE),
+      poa_yw = !is.na(.data$poa) & .data$poa %in% c("Y", "W"),
+      poa_invalid = is.na(.data$poa) | !.data$poa %in% c("Y", "W", "N", "U"),
+      evaluated = !.data$poa_yw & !.data$excluded,
+      met = .data$evaluated & .data$hit
+    ) |>
+    dplyr::group_by(.data$claim_id) |>
+    dplyr::mutate(
+      hac6_anchor = any(.data$met & .data$hac == 6L & !.data$show),
+      # UTI "show" codes only count when a catheter-infection code is itself met.
+      met = .data$met & !(.data$hac == 6L & .data$show & !.data$hac6_anchor),
+      invalid_poa_on_claim = any(.data$evaluated & .data$poa_invalid),
+      any_met = any(.data$met)
+    ) |>
+    dplyr::ungroup()
+
+  met_claims <- st |> dplyr::filter(.data$any_met)
+  ungroupable <- no_hac$ungroupable
+  if (poa_exempt == "non_exempt") {
+    by_hac <- met_claims |>
+      dplyr::filter(.data$met) |>
+      dplyr::group_by(.data$claim_id, .data$hac) |>
+      dplyr::summarise(
+        fail = if (dplyr::first(.data$hac) == 6L) {
+          dplyr::first(.data$hac6_anchor) && any(.data$poa_invalid)
+        } else {
+          dplyr::first(.data$invalid_poa_on_claim)
+        },
+        .groups = "drop"
+      ) |>
+      dplyr::filter(.data$fail)
+    ungroupable <- tibble::tibble(claim_id = unique(by_hac$claim_id), return_code = 9L)
+  } else if (poa_exempt == "unknown") {
+    n_sdx <- ctx$sdx |> dplyr::count(.data$claim_id, name = "n_sdx")
+    first_hac_code <- met_claims |>
+      dplyr::arrange(.data$claim_id, .data$order) |>
+      dplyr::distinct(.data$claim_id, .keep_all = TRUE) |>
+      dplyr::left_join(n_sdx, by = "claim_id") |>
+      dplyr::mutate(return_code = dplyr::case_when(
+        .data$n_sdx >= 2L ~ 15L,
+        !is.na(.data$poa) & .data$poa %in% c("N", "U") ~ 10L,
+        .data$poa_invalid ~ 11L,
+        TRUE ~ 0L
+      )) |>
+      dplyr::filter(.data$return_code != 0L)
+    ungroupable <- first_hac_code |> dplyr::select("claim_id", "return_code")
+  }
+
+  hac_met <- st |>
+    dplyr::filter(.data$met) |>
+    dplyr::distinct(.data$claim_id, .data$seq)
+  list(hac_met = hac_met, ungroupable = ungroupable)
 }
 
 # ---------------------------------------------------------------------------
 
-msdrg_assemble_output <- function(ctx, tbls, initial, final) {
+msdrg_assemble_output <- function(ctx, tbls, initial, final, hac_ungroupable) {
   logic <- tbls$drg_logic
   result_of <- function(state) {
     row <- state$row
@@ -423,10 +511,13 @@ msdrg_assemble_output <- function(ctx, tbls, initial, final) {
   }
   fin <- result_of(final)
   ini <- result_of(initial)
-  # Claims skipped in the final pass (HAC ungroupable) keep the initial match.
-  missing <- setdiff(ini$claim_id, fin$claim_id)
-  if (length(missing) > 0) {
-    fin <- dplyr::bind_rows(fin, ini |> dplyr::filter(.data$claim_id %in% missing))
+  # Claims the HAC pass made ungroupable get DRG 999 with its return code.
+  if (nrow(hac_ungroupable) > 0) {
+    fin <- dplyr::bind_rows(fin, tibble::tibble(
+      claim_id = hac_ungroupable$claim_id, drg = 999L, base_drg = 999L, mdc = 0L,
+      med_surg = NA_character_, severity = NA_character_,
+      return_code = hac_ungroupable$return_code, formula = NA_character_
+    ))
   }
   ctx$claims |>
     dplyr::select("claim_id") |>

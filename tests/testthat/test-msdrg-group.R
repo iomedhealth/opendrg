@@ -42,9 +42,26 @@ test_that("final grouping matches the CMS grouper on claims without a HAC-driven
 })
 
 test_that("final grouping honours hospital-acquired conditions", {
-  skip("HAC pass not implemented yet: needs the CMS HAC formula table")
   cmp <- group_fixture()
+  affected <- cmp$initial_drg_exp != cmp$drg_exp
+  expect_gt(sum(affected), 50)
   expect_equal(cmp$drg, cmp$drg_exp)
+  expect_equal(cmp$severity, cmp$severity_exp)
+  expect_equal(cmp$med_surg, cmp$med_surg_exp)
+})
+
+test_that("unknown hospital POA status makes HAC claims ungroupable with return code 10", {
+  f <- fixture
+  affected <- f$expected$claim_id[f$expected$initial_drg != f$expected$drg]
+  got <- msdrg_group(
+    f$claims[f$claims$claim_id %in% affected, ],
+    f$diagnoses[f$diagnoses$claim_id %in% affected, ],
+    f$procedures[f$procedures$claim_id %in% affected, ],
+    tables = msdrg_tables(f$version), poa_exempt = "unknown"
+  )
+  expect_true(all(got$drg == 999L))
+  expect_true(all(got$return_code %in% c(10L, 11L, 15L)))
+  expect_equal(got$initial_drg, f$expected$initial_drg[match(got$claim_id, f$expected$claim_id)])
 })
 
 test_that("input validation reports missing columns and unknown claims", {

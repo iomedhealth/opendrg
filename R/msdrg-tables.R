@@ -97,7 +97,14 @@ msdrg_prepare_tables <- function(tbls) {
   hac <- tbls$dx_patterns |>
     dplyr::filter(.data$hac > 0) |>
     dplyr::transmute(pattern = .data$pattern, attribute = sprintf("HAC%02d", .data$hac))
-  tbls$dx_pattern_attrs <- dplyr::bind_rows(tbls$dx_pattern_attrs, dxc, hac) |>
+  # HAC-6 (catheter-associated UTI) codes that are not the catheter-infection
+  # codes themselves are the "show" list; CMS's binary carries this as the
+  # operand hac06_show, which the flat files omit.
+  hac6_sdx <- tbls$dx_pattern_attrs$pattern[tbls$dx_pattern_attrs$attribute == "hac06_sdx"]
+  show <- tbls$dx_patterns |>
+    dplyr::filter(.data$hac == 6L, !.data$pattern %in% hac6_sdx) |>
+    dplyr::transmute(pattern = .data$pattern, attribute = "hac06_show")
+  tbls$dx_pattern_attrs <- dplyr::bind_rows(tbls$dx_pattern_attrs, dxc, hac, show) |>
     dplyr::distinct()
 
   # Per-pattern severity contributed by a diagnosis when it is secondary.
@@ -129,6 +136,14 @@ msdrg_prepare_tables <- function(tbls) {
   )
   tbls$logic_by_mdc <- split(logic, logic$mdc)
   tbls$terms_by_mdc <- lapply(tbls$logic_by_mdc, msdrg_rows_terms)
+
+  if (!is.null(tbls$hac_formulas)) {
+    hac <- tbls$hac_formulas
+    hac$ast <- lapply(hac$formula, msdrg_formula_parse)
+    hac$expr <- lapply(hac$ast, msdrg_formula_compile, resolver = msdrg_row_resolver(1L))
+    tbls$hac_formulas <- hac
+    tbls$hac_terms <- msdrg_rows_terms(hac)
+  }
   tbls$prepared <- TRUE
   tbls
 }

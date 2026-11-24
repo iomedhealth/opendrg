@@ -17,7 +17,13 @@ version <- if (length(args) >= 2) args[[2]] else "44.0"
 
 pkgload::load_all(".", quiet = TRUE)
 
-tbls <- msdrg_import_cms(misc_dir, version = version)
+# The HAC formulas are not part of the flat files: they only exist in the
+# grouper's binary data buffer and were dumped from it with the Java access
+# layer (see dev/oracle/). Keep one CSV per version here.
+hac_file <- file.path("data-raw", paste0("msdrg-hac-formulas-v", gsub(".", "", version, fixed = TRUE), ".csv"))
+hac_formulas <- utils::read.csv(hac_file, colClasses = c("integer", "character"), strip.white = TRUE)
+
+tbls <- msdrg_import_cms(misc_dir, version = version, hac_formulas = hac_formulas)
 print(tbls)
 
 out_dir <- file.path("inst", "extdata", "msdrg")
