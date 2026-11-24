@@ -264,10 +264,13 @@ msdrg_severity_columns <- function(ctx, tbls, claim_ids, supp_ids, hac_met) {
         dplyr::distinct(.data$claim_id, .data$seq)
       eligible <- eligible |> dplyr::anti_join(suppressed, by = c("claim_id", "seq"))
     }
-    best <- eligible |>
-      dplyr::group_by(.data$claim_id) |>
-      dplyr::summarise(level = min(.data$level), .groups = "drop")
-    level <- dplyr::coalesce(best$level[match(claim_ids, best$claim_id)], 3L)
+    level <- rep(3L, length(claim_ids))
+    if (nrow(eligible) > 0) {
+      best <- eligible |>
+        dplyr::group_by(.data$claim_id) |>
+        dplyr::summarise(level = min(.data$level), .groups = "drop")
+      level <- dplyr::coalesce(best$level[match(claim_ids, best$claim_id)], 3L)
+    }
     out[[paste0("sev__", id)]] <- c("MCC", "CC", "NCC")[level]
   }
   out
@@ -498,15 +501,16 @@ msdrg_assemble_output <- function(ctx, tbls, initial, final, hac_ungroupable) {
         dplyr::coalesce(state$pdx_mdc[k], 0L)
       }
     }, integer(1))
+    no_match <- rc != 0L | is.na(row)
     tibble::tibble(
       claim_id = state$claim_id,
-      drg = drg,
-      base_drg = ifelse(rc != 0L, 999L, ifelse(is.na(row), NA_integer_, logic$base_drg[row])),
+      drg = as.integer(drg),
+      base_drg = dplyr::if_else(rc != 0L, 999L, logic$base_drg[row]),
       mdc = mdc,
-      med_surg = ifelse(rc != 0L | is.na(row), NA_character_, logic$med_surg[row]),
-      severity = ifelse(rc != 0L | is.na(row) | drg == 998L, NA_character_, state$severity),
-      return_code = rc,
-      formula = ifelse(is.na(row), NA_character_, logic$formula[row])
+      med_surg = dplyr::if_else(no_match, NA_character_, logic$med_surg[row]),
+      severity = dplyr::if_else(no_match | drg == 998L, NA_character_, state$severity),
+      return_code = as.integer(rc),
+      formula = dplyr::if_else(is.na(row), NA_character_, logic$formula[row])
     )
   }
   fin <- result_of(final)
