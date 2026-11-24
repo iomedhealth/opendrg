@@ -66,7 +66,13 @@ implementations.
 ## Licensing
 
 Package code is MIT. Bundled logic tables are derived from publicly released
-government data (CMS: US federal work; NHS England *Code to Group*
-publications). ICD-10-CM/PCS, ICD-10 and OPCS-4 **descriptions** are not
-bundled — only the codes the logic needs. Check the applicable terms before
-redistributing derived tables.
+government data:
+
+* CMS MS-DRG tables are a work of the US federal government (public domain).
+* HRG4+ tables are derived from NHS England's *Code to Group* workbooks and
+  contain public sector information licensed under the
+  [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
+  © NHS England.
+
+ICD-10-CM/PCS, ICD-10 and OPCS-4 **descriptions** are not bundled — only the
+codes the logic needs.
