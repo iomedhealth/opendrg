@@ -16,7 +16,7 @@ inside databases through dbplyr.
 | Grouper | Status | Validation |
 |---|---|---|
 | CMS **MS-DRG** v43.0, v43.1 (FY 2026), v44.0 (FY 2027) | Working | 9,864 / 9,864 CMS TESTDB claims identical to CMS's grouper for every version: final & initial DRG, MDC, return code, severity, HAC handling |
-| NHS England **HRG4+** 2024/25 National Costs | In progress | Logic tables imported from the published *Code to Group* workbook; engine under construction |
+| NHS England **HRG4+** 2024/25 National Costs (admitted patient care) | Working | 750 / 750 official test episodes and 477 / 477 spells identical to NHS England's expected results: episode & spell HRG, grouping method, dominant procedure, unbundled HRGs, PBC |
 
 ## Usage
 
@@ -35,6 +35,12 @@ procedures <- data.frame(claim_id = 1, seq = 1, code = "02703ZZ")   # ICD-10-PCS
 g <- grouper("msdrg", version = "44.0")
 group(g, claims, diagnoses, procedures)
 #>   claim_id drg initial_drg base_drg mdc med_surg severity return_code ...
+
+# HRG4+ admitted patient care: episodes in the standard APC layout
+h <- grouper("hrg4plus", version = "2024-25-nc")
+res <- group(h, episodes)      # DIAG_01.., OPER_01.., STARTAGE, SEX, EPIDUR, ...
+res$episodes                   # fce_hrg, grouping_method, dominant_procedure, unbundled_hrgs, spell_hrg, ...
+res$spells
 ```
 
 Inputs are long-format data frames (one row per claim / diagnosis /
@@ -54,7 +60,11 @@ CMS and NHS England both publish the complete grouping logic as data:
   reference implementation.
 * **HRG4+**: the *Code to Group* workbook contains the code→HRG-root mapping,
   root→split rules, formal condition flags (`Simple Flags`) and every code
-  list they reference.
+  list they reference. `opendrg` forms combination codes, derives unbundled
+  HRGs, picks the dominant procedure by hierarchy, applies the burns /
+  multiple-trauma / procedure / global-exception / diagnosis precedence and
+  the split rules, then groups spells from a pseudo-record of the dominant
+  episode — exactly as NHS England's grouper does on its published test data.
 
 New releases are imported with `msdrg_import_cms()` /
 `hrg_import_code_to_group()`; the engines do not change.

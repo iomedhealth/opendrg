@@ -4,7 +4,7 @@
 \alias{group}
 \title{Assign casemix groups to claims}
 \usage{
-group(grouper, claims, diagnoses, procedures, ...)
+group(grouper, claims, diagnoses = NULL, procedures = NULL, ...)
 }
 \arguments{
 \item{grouper}{A grouper created with \code{\link[=grouper]{grouper()}}.}
@@ -12,14 +12,18 @@ group(grouper, claims, diagnoses, procedures, ...)
 \item{claims}{A data frame with one row per claim. See the system-specific
 documentation (e.g. \code{\link[=msdrg_group]{msdrg_group()}}) for the required columns.}
 
-\item{diagnoses}{A data frame with one row per diagnosis code on a claim.}
+\item{diagnoses}{A data frame with one row per diagnosis code on a claim
+(MS-DRG only; HRG4+ episodes carry their codes in \code{DIAG_nn}/\code{OPER_nn}
+columns).}
 
-\item{procedures}{A data frame with one row per procedure code on a claim.}
+\item{procedures}{A data frame with one row per procedure code on a claim
+(MS-DRG only).}
 
 \item{...}{Passed on to the system-specific method.}
 }
 \value{
-A data frame with one row per claim and the grouping results.
+For MS-DRG, a data frame with one row per claim; for HRG4+, a list
+with \code{episodes} and \code{spells} data frames (see \code{\link[=hrg_group_apc]{hrg_group_apc()}}).
 }
 \description{
 Assign casemix groups to claims

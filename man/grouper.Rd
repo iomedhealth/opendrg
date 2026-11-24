@@ -7,12 +7,13 @@
 grouper(system = c("msdrg", "hrg4plus"), version = NULL)
 }
 \arguments{
-\item{system}{Grouping system. Currently \code{"msdrg"} (CMS Medicare Severity
-DRGs). \code{"hrg4plus"} (NHS England HRG4+) is planned.}
+\item{system}{Grouping system: \code{"msdrg"} (CMS Medicare Severity DRGs) or
+\code{"hrg4plus"} (NHS England HRG4+, admitted patient care).}
 
-\item{version}{Version label, e.g. \code{"44.0"} for MS-DRG FY 2027. Defaults
-to the latest bundled version. May also be a table set built with
-\code{\link[=msdrg_import_cms]{msdrg_import_cms()}}.}
+\item{version}{Version label, e.g. \code{"44.0"} for MS-DRG FY 2027 or
+\code{"2024-25-nc"} for the HRG4+ 2024/25 National Costs design. Defaults to
+the latest bundled version. May also be a table set built with
+\code{\link[=msdrg_import_cms]{msdrg_import_cms()}} or \code{\link[=hrg_import_code_to_group]{hrg_import_code_to_group()}}.}
 }
 \value{
 An object of class \code{opendrg_grouper}.
