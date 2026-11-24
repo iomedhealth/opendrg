@@ -318,7 +318,7 @@ msdrg_run_pass <- function(ctx, tbls, hac_met = NULL, skip = NULL) {
   sev_all <- msdrg_severity_columns(ctx, tbls, state$claim_id, tbls$suppression_sets$supp_id, hac_met)
 
   evaluate <- function(ids, mdcs) {
-    out <- vector("list", 0)
+    out <- list(tibble::tibble(claim_id = ids[0], row = integer()))
     for (m in unique(mdcs)) {
       sel <- ids[mdcs == m]
       out[[length(out) + 1]] <- msdrg_evaluate_mdc(ctx, tbls, sel, m, sev_all)
