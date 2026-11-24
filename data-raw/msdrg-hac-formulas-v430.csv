@@ -1,0 +1,15 @@
+hac_number,formula
+1,SDX:HAC01
+2,SDX:HAC02
+3,SDX:HAC03
+4,SDX:HAC04
+5,SDX:HAC05
+6,SDX:hac06_sdx | (SDX:hac06_sdx & SDX:hac06_show)
+7,SDX:HAC07
+8,SDX:HAC08 & hac08_proc
+9,SDX:HAC09
+10,SDX:HAC10 & hac10_proc
+11,PDX:hac11_pdx & SDX:hac11_sdx & hac11_proc
+12,SDX:HAC12 & hac12_proc
+13,SDX:HAC13 & hac13_proc
+14,SDX:HAC14 & hac14_proc

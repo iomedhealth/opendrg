@@ -11,7 +11,7 @@ inside databases through dbplyr.
 
 | Grouper | Status | Validation |
 |---|---|---|
-| CMS **MS-DRG** v44.0 (FY 2027) | Working | 9,864 / 9,864 CMS TESTDB claims identical to CMS's grouper: final & initial DRG, MDC, return code, severity, HAC handling |
+| CMS **MS-DRG** v43.0, v43.1 (FY 2026), v44.0 (FY 2027) | Working | 9,864 / 9,864 CMS TESTDB claims identical to CMS's grouper for every version: final & initial DRG, MDC, return code, severity, HAC handling |
 | NHS England **HRG4+** 2024/25 National Costs | In progress | Logic tables imported from the published *Code to Group* workbook; engine under construction |
 
 ## Usage

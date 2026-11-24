@@ -15,7 +15,8 @@ dir <- "dev/oracle/output"
 inp <- readr::read_csv(file.path(dir, "testdb_v440_input.csv"), show_col_types = FALSE, guess_max = 1e5)
 dx <- readr::read_csv(file.path(dir, "testdb_v440_input_dx.csv"), show_col_types = FALSE, col_types = readr::cols(.default = "c", claim_id = "i", seq = "i"))
 pr <- readr::read_csv(file.path(dir, "testdb_v440_input_pr.csv"), show_col_types = FALSE, col_types = readr::cols(.default = "c", claim_id = "i", seq = "i"))
-exp <- readr::read_csv(file.path(dir, "testdb_v440_expected.csv"), show_col_types = FALSE, guess_max = 1e5)
+prefix <- paste0("testdb_v", gsub(".", "", version, fixed = TRUE))
+exp <- readr::read_csv(file.path(dir, paste0(prefix, "_expected.csv")), show_col_types = FALSE, guess_max = 1e5)
 
 if (!is.na(n_claims)) {
   keep <- head(inp$claim_id, n_claims)
@@ -58,4 +59,4 @@ if (nrow(bad) > 0) {
   cat("\nSample mismatches:\n")
   print(bad |> select(claim_id, exp_drg, drg, exp_initial_drg, initial_drg, exp_mdc, mdc, exp_rc, return_code, exp_sev, sev, formula) |> head(15), width = 200)
 }
-readr::write_csv(cmp, "dev/oracle/output/opengrd_vs_oracle.csv")
+readr::write_csv(cmp, file.path(dir, paste0("opengrd_vs_oracle_", prefix, ".csv")))

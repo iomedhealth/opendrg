@@ -64,6 +64,26 @@ test_that("unknown hospital POA status makes HAC claims ungroupable with return 
   expect_equal(got$initial_drg, f$expected$initial_drg[match(got$claim_id, f$expected$claim_id)])
 })
 
+test_that("older bundled versions match the CMS grouper", {
+  for (v in names(fixture$other_versions)) {
+    exp <- fixture$other_versions[[v]]
+    f <- fixture
+    got <- msdrg_group(
+      f$claims[f$claims$claim_id %in% exp$claim_id, ],
+      f$diagnoses[f$diagnoses$claim_id %in% exp$claim_id, ],
+      f$procedures[f$procedures$claim_id %in% exp$claim_id, ],
+      tables = msdrg_tables(v), poa_exempt = "non_exempt"
+    )
+    cmp <- dplyr::inner_join(exp, got, by = "claim_id", suffix = c("_exp", ""))
+    expect_equal(nrow(cmp), nrow(exp), info = v)
+    expect_equal(cmp$drg, cmp$drg_exp, info = v)
+    expect_equal(cmp$initial_drg, cmp$initial_drg_exp, info = v)
+    expect_equal(cmp$mdc, cmp$mdc_exp, info = v)
+    expect_equal(cmp$return_code, cmp$return_code_exp, info = v)
+    expect_equal(cmp$severity, cmp$severity_exp, info = v)
+  }
+})
+
 test_that("input validation reports missing columns and unknown claims", {
   expect_error(msdrg_group(data.frame(claim_id = 1), fixture$diagnoses[1, ]), "missing required column")
   expect_error(
