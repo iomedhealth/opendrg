@@ -28,6 +28,7 @@ Suggests:
     dbplyr,
     knitr,
     readr,
+    readxl,
     rmarkdown,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
