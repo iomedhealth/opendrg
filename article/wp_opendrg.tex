@@ -1,0 +1,346 @@
+% IOMED Article
+% LaTeX Template — opendrg Technical Whitepaper
+%
+% Build: tectonic wp_opendrg.tex
+%
+% License:
+% CC BY-NC-SA 3.0 (http://creativecommons.org/licenses/by-nc-sa/3.0/)
+%
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND OTHER DOCUMENT CONFIGURATIONS
+%----------------------------------------------------------------------------------------
+
+\documentclass[fleqn,10pt]{IOMEDArticle}
+
+% Fix for Tectonic/XeTeX fonts
+\usepackage{ifxetex}
+\ifxetex
+  \usepackage{fontspec}
+  \setmainfont{Times}
+  \setsansfont{Helvetica}
+\fi
+
+\usepackage[english]{babel}
+\usepackage{listings,color}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{calc}
+\usepackage{amsmath}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds}
+\hbadness=10000
+\emergencystretch=1.5em
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{color1!60},
+  backgroundcolor=\color{color2!4},
+  xleftmargin=4pt,
+  xrightmargin=4pt,
+  aboveskip=4pt,
+  belowskip=4pt
+}
+
+%----------------------------------------------------------------------------------------
+%	ARTICLE INFORMATION
+%----------------------------------------------------------------------------------------
+
+\JournalInfo{IOMED Research \& Development}
+\Archive{Technical Whitepaper --- \today}
+\PaperTitle{opendrg: Open, Portable Casemix Grouping in R}
+\PaperSubtitle{Re-implementing the CMS MS-DRG and NHS England HRG4+ hospital groupers as published logic tables plus a verified evaluation engine}
+
+\Authors{
+    IOMED Research \& Development Team\textsuperscript{1,*}
+}
+
+\affiliation{
+    \textbf{1} IOMED Medical Solutions S.L., Barcelona, Spain \\
+    $^*$ \textbf{Contact}: info@iomed.health
+}
+
+\Keywords{Casemix --- Diagnosis Related Groups (MS-DRG) --- Healthcare Resource Groups (HRG4+) --- Hospital Reimbursement --- Open-Source Software --- R --- Reproducible Verification}
+\newcommand{\keywordname}{Keywords}
+
+\Abstract{
+Casemix groupers translate the coded content of a hospital stay---diagnoses, procedures, demographics and discharge disposition---into the payment and costing categories that underpin inpatient reimbursement, benchmarking and health-services research: Medicare Severity Diagnosis Related Groups (MS-DRGs) in the United States and Healthcare Resource Groups (HRG4+) in England. The reference implementations are distributed as platform-bound executables (a Windows installer, a z/OS mainframe module, a Java library), which makes grouping hard to embed in modern analytical pipelines, impossible to run inside a database, and opaque to the analysts who depend on its output. This whitepaper describes \textbf{opendrg}, an open-source R package that re-implements both groupers as \emph{published logic tables plus a small evaluation engine}. We show that the complete MS-DRG decision logic is contained in nine flat files released by CMS with every version---one boolean formula per DRG, code-to-attribute patterns, a complication/comorbidity exclusion list and procedure clusters---and that the HRG4+ logic is likewise contained, in machine-readable form, in NHS England's \emph{Code to Group} workbook. The MS-DRG engine compiles the 794 CMS formulas into \texttt{dplyr} expressions and evaluates them in CMS's order (pre-MDC rows, principal-diagnosis MDC, reroutes to the multiple-trauma, HIV and unrelated-OR-procedure MDCs), reproducing per-row severity suppression, CC/MCC exclusions, cluster-based attribute suppression and the hospital-acquired-condition (HAC) second pass. Verification against CMS's own Java grouper---run on its 9{,}864-claim test database---shows \textbf{100\% agreement on final DRG, initial DRG, MDC, medical/surgical class, severity level and return code for all three bundled versions (v43.0, v43.1 and v44.0)}, including the 73 claims whose DRG is changed by the HAC pass and the alternative hospital POA-reporting status. The package passes \texttt{R CMD check} without notes on five continuous-integration platforms and groups $\sim$1{,}200 claims per second on a laptop. The same architecture is being applied to HRG4+, whose 2024/25 National Costs tables (2{,}900 HRGs, 39{,}474 code mappings, 1{,}788 formal rule conditions, 247{,}614 list entries) are already imported and will be validated against NHS England's official expected results.
+}
+
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+
+\flushbottom
+\maketitle
+\thispagestyle{empty}
+\clearpage
+
+\tableofcontents
+
+%----------------------------------------------------------------------------------------
+%	ARTICLE CONTENTS
+%----------------------------------------------------------------------------------------
+
+\section{Executive Overview}
+
+Diagnosis-related groups were introduced at Yale in the late 1970s to describe hospital output in a manageable number of clinically coherent, resource-homogeneous classes~\cite{fetter1980drg}. Four decades later, their descendants are the unit of account of inpatient reimbursement in most developed health systems: Medicare pays for millions of inpatient discharges a year through \textbf{MS-DRGs} assigned by the CMS GROUPER~\cite{cms2026msdrg}, and NHS England prices and costs admitted, outpatient, emergency and critical-care activity through \textbf{HRG4+} groups assigned by the National Casemix Office grouper~\cite{nhse2025hrg}. Beyond payment, the group assigned to a stay is the most widely used casemix adjuster in hospital benchmarking, in health-economic modelling and in the construction of cost weights for real-world evidence studies.
+
+The software that performs the assignment, however, has remained a black box bound to specific platforms:
+
+\begin{itemize}[leftmargin=*,nosep]
+    \item \textbf{CMS MS-DRG} ships as a z/OS COBOL/Java module, a Windows installer, and a Java library whose data tables are serialised in a proprietary protocol-buffer blob. Grouping from Python, R or SQL means calling out to a JVM or re-keying claims into a desktop application.
+    \item \textbf{NHS England HRG4+} ships as a 32-bit Windows application (.NET 4.5.2 front end over a native rules engine) that reads encrypted reference-data files. Costing teams on macOS, Linux, or cloud warehouses cannot run it at all.
+    \item Both are \emph{deterministic functions of published tables}, yet neither can be inspected, versioned or unit-tested by the analysts who rely on their output, and neither can be pushed down into a database where the claims actually live.
+\end{itemize}
+
+\textbf{opendrg}~\cite{opendrg2026} resolves this by observing that both agencies publish the complete grouping logic as data, and by building a small, verified engine that evaluates that data in R~\cite{rcore2026} (Figure~\ref{fig:architecture}). Three design decisions follow:
+
+\begin{enumerate}[leftmargin=*,nosep]
+    \item \textbf{Logic as tables, not code.} The package contains no hand-written DRG or HRG rules. New fiscal-year releases are imported with one function call; the engine does not change (Section~\ref{sec:msdrg_data}).
+    \item \textbf{Formulas compile to \texttt{dplyr} expressions} and each MDC is evaluated as a single \texttt{case\_when()}, so the design can be pushed down to SQL through \texttt{dbplyr}~\cite{dbplyr2024} once the remaining in-memory steps are ported (Section~\ref{sec:engine}).
+    \item \textbf{Verification against the reference implementation, not against documentation.} CMS's own Java grouper is run on CMS's own test database to produce the oracle; the package test-suite asserts byte-for-byte agreement (Section~\ref{sec:verification}).
+\end{enumerate}
+
+The headline results are summarised in Table~\ref{tab:headline}. Section~\ref{sec:hrg} describes the state of the HRG4+ implementation, which follows the same pattern.
+
+\begin{table*}[!t]\centering
+\caption{Headline status of the two groupers implemented in \textbf{opendrg} (November 2026).}
+\label{tab:headline}
+\scriptsize
+\setlength{\tabcolsep}{4.0pt}
+\begin{tabular}{@{}p{2.0cm}p{2.6cm}p{3.5cm}p{4.8cm}p{3.2cm}@{}}
+\toprule
+Grouper & Versions bundled & Source of logic & Verification & Status \\
+\midrule
+\textbf{CMS MS-DRG} & v43.0, v43.1 (FY 2026), v44.0 (FY 2027) & Nine flat files of the CMS mainframe release + 14 HAC formulas from the binary tables & 9{,}864 / 9{,}864 CMS TESTDB claims identical to CMS's Java grouper for every version: final \& initial DRG, MDC, med/surg, severity, return code & \textbf{Complete}; \texttt{R CMD check} clean; CI on 5 platforms \\
+\textbf{NHS England HRG4+} & 2024/25 National Costs (tables) & NHS England \emph{Code to Group} workbook (OGL v3.0) & Official expected results for 7 datasets (APC: 750 episodes / 477 spells) & \textbf{In progress}: tables imported; engine under construction \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    font=\sffamily\scriptsize,
+    box/.style={draw=color1!75, line width=0.7pt, rounded corners=3pt, fill=color2!6, align=center, inner xsep=0.2cm, inner ysep=0.14cm, text width=3.1cm, minimum height=1.25cm},
+    data/.style={draw=color1, line width=0.9pt, rounded corners=3pt, fill=color1!10, align=center, inner xsep=0.2cm, inner ysep=0.14cm, text width=3.1cm, minimum height=1.25cm},
+    res/.style={draw=color1, line width=0.9pt, rounded corners=3pt, fill=white, align=center, inner xsep=0.2cm, inner ysep=0.14cm, text width=3.1cm, minimum height=1.25cm},
+    arr/.style={-{Stealth[length=2mm,width=1.6mm]}, line width=0.8pt, color=color1}
+]
+\node[data] (tables) at (0,0) {\textbf{Published logic tables}\\ CMS flat files / NHS \emph{Code to Group}\\ imported once per release};
+\node[box, right=0.55cm of tables] (mark) {\textbf{Marking}\\ code $\rightarrow$ attributes, MDC, HAC lists; clusters; CC/MCC exclusions};
+\node[box, right=0.55cm of mark] (wide) {\textbf{Claim $\times$ attribute table}\\ \texttt{pdx\_\_x}, \texttt{sdx\_\_x}, \texttt{pr\_\_x}, computed specials, per-row severity};
+\node[box, right=0.55cm of wide] (eval) {\textbf{Ordered formula evaluation}\\ one \texttt{case\_when()} per MDC: pre-MDC $\rightarrow$ PDX MDC $\rightarrow$ reroutes};
+\node[res, right=0.55cm of eval] (res) {\textbf{Results}\\ initial DRG $\rightarrow$ HAC pass $\rightarrow$ final DRG, MDC, severity, return code};
+\draw[arr] (tables) -- (mark);
+\draw[arr] (mark) -- (wide);
+\draw[arr] (wide) -- (eval);
+\draw[arr] (eval) -- (res);
+\node[below=0.35cm of mark, text width=3.1cm, align=center] {claims, diagnoses (+POA), procedures as long-format data frames};
+\node[below=0.35cm of eval, text width=3.1cm, align=center] {formulas compiled to \texttt{dplyr} expressions (\texttt{dbplyr}-translatable)};
+\node[below=0.35cm of res, text width=3.1cm, align=center] {verified against the reference grouper on 9{,}864 claims};
+\end{tikzpicture}}
+\caption{\textbf{opendrg architecture.} Every rule lives in versioned tables imported from the publishing agency; the engine only marks codes, builds a wide logical table per claim and evaluates the agency's formulas in the agency's order.}
+\label{fig:architecture}
+\end{figure*}
+
+\section{Background: Two Groupers, One Shape}
+
+\subsection{CMS MS-DRGs}
+
+An MS-DRG is assigned from the principal diagnosis, up to 24 secondary diagnoses with present-on-admission (POA) indicators, up to 25 procedures (ICD-10-CM/PCS), sex and discharge status~\cite{cms2026msdrgmanual}. Logically the GROUPER first checks a set of \emph{pre-MDC} conditions (transplants, ECMO, tracheostomy with prolonged ventilation), then assigns one of 25 Major Diagnostic Categories from the principal diagnosis, partitions the stay into a surgical or medical class according to the operating-room procedures present, and finally selects a base DRG and its severity split (with MCC, with CC, without CC/MCC) from the secondary diagnoses that survive an exclusion list keyed on the principal diagnosis. Two cross-cutting mechanisms complicate the picture: stays with an operating-room procedure unrelated to the principal diagnosis are rerouted to DRGs 981--989, and since FY 2009 secondary diagnoses that meet \emph{hospital-acquired condition} criteria and were not present on admission are removed from severity, producing a distinct \emph{final} DRG~\cite{cms2005hac}. Version 44.0, effective 1 October 2026, defines 766 MS-DRGs plus the two ungroupable codes 998 and 999.
+
+\subsection{NHS England HRG4+}
+
+HRG4+ assigns one \emph{core} HRG per finished consultant episode and per spell, plus \emph{unbundled} HRGs for separately priced components (chemotherapy, radiotherapy, critical care, diagnostic imaging, rehabilitation, specialist palliative care), across seven datasets: admitted patient care, non-admitted consultations, emergency medicine, adult/paediatric/neonatal critical care and renal~\cite{nhse2025hrg,nhsd2020casemix}. Codes (ICD-10 diagnoses, OPCS-4 procedures) trigger one of 85 subchapters; a \emph{hierarchy} selects the dominant procedure; a \emph{code to group} table yields an HRG \emph{root}; and \emph{group to split} rules refine the root using complication-and-comorbidity scores, age, length of stay and other flags. The 2024/25 National Costs design contains 2{,}900 HRGs.
+
+\subsection{The common shape}
+
+Both groupers are therefore \emph{ordered decision tables over code attributes}: a code is first mapped to a set of named attributes, a small boolean language over those attributes selects a group, and a severity/complexity score refines it. This is exactly the shape that lends itself to an \emph{engine + data} implementation, and both agencies publish the data.
+
+\section{The MS-DRG Logic as Data}
+\label{sec:msdrg_data}
+
+\subsection{What CMS publishes}
+
+Alongside the Windows and Java distributions, CMS publishes a mainframe package whose \texttt{Misc} folder contains the complete grouping logic as CSV-like flat files (Table~\ref{tab:flatfiles}). These are the human-readable twins of the protocol-buffer tables the Java grouper loads at runtime: we verified, by dumping the binary tables through CMS's own data-access layer, that the 794 \texttt{DRGLOGIC} rows, the 8{,}271 cluster rows and the 172{,}853 exclusion rows are identical in content and evaluation order (the binary carries two additional, unreachable rows per version). Only the 14 hospital-acquired-condition criteria formulas exist exclusively in the binary; \textbf{opendrg} ships them as a documented per-version supplement.
+
+\begin{table}[!t]\centering
+\caption{CMS MS-DRG v44.0 flat files bundled by \textbf{opendrg} (170~KB compressed per version).}
+\label{tab:flatfiles}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}p{2.05cm}p{4.55cm}r@{}}
+\toprule
+File & Content & Rows \\
+\midrule
+\texttt{DRGLOGIC} & One formula per DRG row: MDC, DRG, base DRG, med/surg, return code, reroute MDC, formula, severity suppression & 794 \\
+\texttt{DXLIST} & ICD-10-CM code $\rightarrow$ pattern, sex restriction, exclusion group & 74{,}966 \\
+\texttt{DXPATERN} & Pattern $\rightarrow$ MDC, diagnosis category, HAC list, attributes & 788 \\
+\texttt{PRLIST} & ICD-10-PCS code (and cluster pseudo-codes) $\rightarrow$ pattern & 83{,}380 \\
+\texttt{PRPATERN} & Pattern $\rightarrow$ procedure attributes & 1{,}042 \\
+\texttt{DXATTLST}, \texttt{PRATTLST} & Attribute vocabularies & 65 / 233 \\
+\texttt{EXCLUSN} & CC/MCC exclusion pairs (PDX group $\rightarrow$ SDX code) & 172{,}853 \\
+\texttt{PRCLSTRS} & Procedure clusters (4{,}084 clusters, choice slots, MDC restrictions) & 8{,}271 \\
+\texttt{MDCDSC}, \texttt{DRGDSC4} & Descriptions & 25 / 1{,}034 \\
+HAC formulas & Criteria per HAC list (from the binary tables) & 14 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The formula language}
+
+Each \texttt{DRGLOGIC} row carries a boolean formula over \emph{terms}. We reverse-documented the grammar from CMS's Java lexer and recursive-descent parser (the \texttt{farser} library) and confirmed it against all 794 formulas:
+
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+formula := or
+or      := and ( "|" and )*
+and     := unary ( "&" unary )*
+unary   := "~" unary | primary
+primary := "(" formula ")" | term
+term    := [ PDX | SDX | ANY | ONLY ":" ] identifier
+\end{lstlisting}
+\end{minipage}
+
+A scoped term tests whether the principal diagnosis (\texttt{PDX:}), some secondary diagnosis (\texttt{SDX:}), any diagnosis (\texttt{ANY:}) or every diagnosis (\texttt{ONLY:}) carries an attribute; an unscoped identifier is a procedure attribute or one of 23 \emph{computed specials} (\texttt{MCC}, \texttt{CC}, discharge-status terms, edit flags, and counters such as \texttt{BILATERAL}, \texttt{MULTST} or \texttt{FOUR\_STENTS}). Representative rows:
+
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+3,146,M,146,0,0,(PDX:dxc0306) & (MCC),
+3,0,,0,0,29,(d468 | d477),
+0,3,S,3,0,0,(ecmo | periphecmo) | ((othtrach | NORtemptrach)
+             & (NORmvge96h | ~PDX:mouthlip) & d468),
+8,461,S,461,0,0,MCC & BILATERAL,
+0,999,,0,7,0,INVALID_PDX,
+\end{lstlisting}
+\end{minipage}
+
+Row semantics are first-match-wins within an MDC, in file order. A row with DRG~0 and a non-zero reroute MDC transfers evaluation to that MDC (24: multiple significant trauma, 25: HIV, 29: operating-room procedure unrelated to the principal diagnosis); a row with a non-zero return code makes the claim ungroupable (DRG~999).
+
+\subsection{The claim pipeline}
+\label{sec:engine}
+
+The engine (Figure~\ref{fig:architecture}) reproduces the reference implementation's chain, which we documented from the Java source with file-and-line citations (an 81-page specification accompanies the package):
+
+\begin{enumerate}[leftmargin=*,nosep]
+    \item \textbf{Marking.} Diagnoses and procedures are joined to their patterns. Diagnosis categories (\texttt{dxc\emph{MMCC}}) and HAC-list memberships are materialised as ordinary attributes. Codes that CMS lists once per sex (73 codes, MDC 12 vs 13) are resolved by the claim's sex, falling back to the female row with a sex-conflict flag; codes on several HAC lists union their attributes.
+    \item \textbf{Clusters.} A procedure cluster fires when the claim covers every one of its choice slots; it contributes a pseudo-code (e.g.\ \texttt{@2250}) with its own attributes, and the component codes' attributes are hidden while grouping in the cluster's restricted MDCs (\texttt{F} denoting pseudo-MDC 29, \texttt{ALL} denoting MDCs 1--25 and 29).
+    \item \textbf{Exclusions.} Secondary diagnoses listed in the principal diagnosis's exclusion group, and \emph{MCC-only-if-alive} diagnoses on deceased patients, are removed from severity (but not from the attribute mask).
+    \item \textbf{Severity per row.} Severity is recomputed for every row with that row's suppression attributes, so \texttt{MCC} and \texttt{CC} resolve to a row-specific column; the two are mutually exclusive tokens, as in CMS (hence formulas such as \texttt{(MCC | CC) \& autobmt}).
+    \item \textbf{Evaluation.} Each formula is compiled once to an R expression over the wide claim table; an MDC's rows become a single ordered \texttt{case\_when()}. Pre-MDC rows run for all claims; open claims then run in their principal diagnosis's MDC, with up to two reroute hops. The reported MDC follows CMS's rule (24/25 if visited, else the MDC before 29).
+    \item \textbf{HAC pass.} Every secondary diagnosis on a HAC list whose POA is not Y/W and which is not excluded is tested against its HAC criteria formula; met codes are dropped from severity in a second grouping pass, UTI ``show-list'' codes count only when a catheter-infection code is itself met, and invalid POA reporting on met HACs produces return codes 9, 10, 11 or 15 according to the hospital's POA-reporting status.
+\end{enumerate}
+
+The public interface is deliberately small:
+
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=R]
+library(opendrg)
+g   <- grouper("msdrg", version = "44.0")
+out <- group(g, claims, diagnoses, procedures)
+# drg, initial_drg, base_drg, mdc, med_surg,
+# severity, return_code, matched formula
+\end{lstlisting}
+\end{minipage}
+
+Inputs are long-format data frames (one row per claim, diagnosis and procedure) so that they map directly onto database tables.
+
+\section{Verification}
+\label{sec:verification}
+
+\subsection{Building the oracle}
+
+Documentation is not a sufficient oracle for a grouper: the Definitions Manual describes intent, while reimbursement depends on the exact behaviour of the shipped software. We therefore built the oracle from CMS's reference implementation itself. The mainframe package contains a fat JAR with the grouper, its formula interpreter and the binary tables for versions 39.0--44.0; it runs on any JVM. A small harness (plain \texttt{javac}, no build system) parses CMS's 9{,}864-record \texttt{TESTDB}, constructs claims exactly as CMS's own mainframe wrapper does, groups them through the official API, and writes per-claim results.
+
+The harness was itself validated in three ways before being trusted: (i) CMS's wrapper, run on macOS, reproduces the expectation embedded in all 9{,}864 TESTDB records byte-for-byte (the same check CMS performs at z/OS installation); (ii) the API harness agrees with the wrapper on every one of the 1{,}922 records whose embedded version it can replay; (iii) the v44.0 run agrees with CMS's own v44.0-graded records (77/77) and a v43.0 run with its 748 v43.0-graded records.
+
+\subsection{Results}
+
+\begin{table}[!t]\centering
+\caption{Agreement of \textbf{opendrg} with CMS's Java grouper on the 9{,}864 TESTDB claims, per bundled version.}
+\label{tab:results}
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Output & v43.0 & v43.1 & v44.0 \\
+\midrule
+Final DRG & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
+Initial DRG (before HAC) & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
+MDC & 100\% & 100\% & 100\% \\
+Medical / surgical class & 100\% & 100\% & 100\% \\
+Severity (MCC / CC / none) & 100\% & 100\% & 100\% \\
+Return code & 100\% & 100\% & 100\% \\
+\midrule
+Claims changed by the HAC pass & \multicolumn{3}{c}{73 (all matched)} \\
+Hospital POA status \texttt{UNKNOWN} (RC 10) & \multicolumn{3}{c}{73 (all matched)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:results} summarises the comparison. For v44.0 the test database yields 9{,}720 grouped claims (return code 0), 48 with an external-cause code as principal diagnosis (RC~1), 96 with an invalid principal diagnosis (RC~7), 144 ungroupable (DRG~999), 101 principal-diagnosis-invalid-as-discharge-diagnosis (DRG~998), 759 distinct DRGs and 73 claims whose final DRG differs from the initial one because of a hospital-acquired condition; \textbf{opendrg} reproduces every one of these, for all three versions, and also reproduces the alternative outcome (RC~10, DRG~999) that CMS produces for the 73 HAC claims when the hospital's POA-reporting status is unknown.
+
+Two observations are worth recording. First, the agreement for v43.0 and v43.1 was obtained on the first run after importing their flat files, with no change to the engine---evidence that the \emph{engine + data} separation is real rather than aspirational. Second, several code paths are implemented from the Java semantics but not exercised by TESTDB (sex conflict, invalid discharge status, bilateral joint and spinal-fusion counters, four-stent/four-vessel counters, GRC 9/11/15); they are documented as open coverage items and can be closed by crafting claims and running them through the same harness.
+
+\subsection{Engineering assurance}
+
+The package carries 848 automated assertions (formula round-tripping for every bundled formula, full TESTDB agreement, the HAC and POA-status paths, input validation) and passes \texttt{R CMD check --as-cran} with no errors, warnings or notes on macOS, Windows and three Ubuntu/R configurations through GitHub Actions. The oracle harness, the extracted engine specification and the table importers are versioned with the package so that any future CMS release can be imported, dumped, and re-verified in minutes. Throughput is approximately 1{,}200 claims per second in single-threaded R on an Apple-silicon laptop; the remaining per-claim loops (greedy trauma/bilateral counting) are small and amenable to vectorisation.
+
+\section{HRG4+: Same Pattern, Published Tables}
+\label{sec:hrg}
+
+{\sloppy NHS England publishes, with every grouper release, a \emph{Code to Group} workbook ``providing details of constituent elements that contribute to HRG grouping''~\cite{nhse2025hrg}, licensed under the Open Government Licence~\cite{ogl3}. Inspection of the 2024/25 National Costs workbook (Table~\ref{tab:hrgtables}) shows that it is not merely documentation: the \texttt{Simple Flags} sheet is a formal rule table in which every condition flag used by the grouper is defined as an ordered conjunction of conditions over five functions (\texttt{DataItemInList}, \texttt{SumDistinctValues}, \texttt{SumListValues}, \texttt{RelDataItemInList}, \texttt{AllDataItemInList}), sixteen data items (diagnoses, procedures, age, episode duration, sex, admission source and method, discharge destination and method, specialties, renal fields), a positional range, a list identifier and a threshold. \texttt{Code To Group} maps every code and combination code to up to 23 ordered (HRG root, flag) candidates and marks the subchapters it triggers; \texttt{Group To Split} maps each of 1{,}274 roots to its ordered splits (e.g.\ \texttt{AA22G/a}, \texttt{AA22F/AA\_CC\_5}, \ldots, \texttt{AA22C/AA\_CC\_14}); the CC, hierarchy, combination, global and other lists supply the sets and values those rules reference.\par}
+
+\begin{table}[!t]\centering
+\caption{HRG4+ 2024/25 National Costs tables imported from the \emph{Code to Group} workbook (272~KB compressed, without ICD-10/OPCS-4 descriptions).}
+\label{tab:hrgtables}
+\scriptsize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{@{}p{2.9cm}p{3.9cm}r@{}}
+\toprule
+Table & Content & Rows \\
+\midrule
+\texttt{hrgs} & HRG catalogue: 2{,}900 HRGs, 85 subchapters, 21 chapters, core/unbundled & 2{,}900 \\
+\texttt{code\_to\_group} & Codes and combination codes with type & 39{,}474 \\
+\texttt{code\_to\_group\_ triggers} & Subchapters triggered per code & 56{,}404 \\
+\texttt{code\_to\_group\_ hrgs} & Ordered (root, flag) candidates per code & 133{,}847 \\
+\texttt{group\_to\_split\_ hrgs} & Ordered (HRG, flag) splits per root & 2{,}944 \\
+\texttt{flag\_rules} & Formal conditions (\texttt{Simple Flags}) & 1{,}788 \\
+\texttt{lists} & CC (158{,}466), hierarchy (31{,}294), other (55{,}551), global, combination & 247{,}614 \\
+\texttt{combination\_codes} & Driving code + qualifying codes & 5{,}080 \\
+\texttt{pbc\_mappings} & Programme budgeting categories & 28{,}816 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The grouper application itself confirms this reading: unpacked, it is a .NET 4.5.2 front end whose year-specific plugin loads nine reference files (\texttt{Code}, \texttt{Lists}, \texttt{RuleDefs}, \texttt{TriggerAndRulesToHrg}, \texttt{Combination}, \ldots) that correspond one-to-one with the workbook's sheets. No decryption or disassembly is required.
+
+NHS England also publishes official test data with expected results for all seven datasets (for admitted patient care: 750 episodes in 477 spells, with episode- and spell-level HRGs, unbundled HRGs, grouping-method flags, dominant procedures and validation messages). These play the role TESTDB plays for MS-DRG. At the time of writing the importer and bundled tables are complete, the published algorithm is being transcribed into an engine specification from the User Manual and Chapter Summaries, and the admitted-patient-care engine is the next deliverable; non-admitted, emergency, critical-care and renal datasets, and the 2025/26 Local Payment Grouper~\cite{nhse2025lpg}, follow on the same tables and engine.
+
+\section{Portability, Licensing and Reproducibility}
+
+\textbf{Portability.} \textbf{opendrg} depends only on R ($\geq$ 4.1) and the tidyverse core (\texttt{dplyr}~\cite{dplyr2023}, \texttt{tidyr}, \texttt{purrr}, \texttt{rlang}, \texttt{vctrs}); there is no Java, .NET or native dependency. Each grouper version is a self-contained table set of a few hundred kilobytes, and versions can coexist in one session (\texttt{grouper("msdrg", "43.1")}). Because formulas are compiled to \texttt{dplyr} expressions and MDC evaluation is a \texttt{case\_when()}, the path to in-database grouping through \texttt{dbplyr} is a matter of porting the marking joins and a handful of counters, not of redesign.
+
+\textbf{Licensing.} Package code is MIT. The CMS tables are a work of the United States federal government (public domain). The HRG4+ tables are derived from NHS England's \emph{Code to Group} publication and contain public sector information licensed under the Open Government Licence v3.0~\cite{ogl3}. Classification \emph{descriptions} (ICD-10-CM/PCS, ICD-10, OPCS-4) are not bundled, only the codes the logic needs.
+
+\textbf{Reproducibility.} Everything needed to regenerate and re-verify the package is in the repository: the importers (\texttt{data-raw/}), the Java oracle harness and its table dumps (\texttt{dev/oracle/}), the engine specifications with source citations (\texttt{dev/notes/}), and the test fixtures derived from the official test databases. A new CMS release is imported, dumped and verified with three commands; a new NHS England release with one.
+
+\section{Conclusion}
+
+Hospital casemix grouping is deterministic, consequential and---as this work demonstrates---fully specified by data that the responsible agencies already publish. By treating that data as the single source of truth and verifying an open engine against the reference implementations rather than against prose, \textbf{opendrg} delivers MS-DRG grouping that is provably identical to CMS's software on CMS's own test database for three consecutive versions, runs anywhere R runs, and can be inspected, versioned and tested like any other analytical code. The same approach, applied to NHS England's published HRG4+ tables, is on track to give English costing and research teams the first grouper they can run outside a Windows desktop.
+
+%----------------------------------------------------------------------------------------
+%	REFERENCE LIST
+%----------------------------------------------------------------------------------------
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
