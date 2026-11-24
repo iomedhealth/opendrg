@@ -1,0 +1,35 @@
+Package: opengrd
+Title: Open, Portable Implementations of Hospital Casemix Groupers
+Version: 0.0.0.9000
+Authors@R: 
+    person("Gabriel", "Maeztu", , "gabriel.maeztu@example.com", role = c("aut", "cre"))
+Description: Re-implements hospital casemix grouping logic in R so that it can be
+    run anywhere, without vendor binaries. Groupers are expressed as published
+    logic tables plus a small evaluation engine, starting with the CMS Medicare
+    Severity Diagnosis Related Groups (MS-DRG) grouper and, later, the NHS
+    England HRG4+ groupers. Inputs and outputs are plain data frames so the
+    package composes with the tidyverse and, eventually, with database backends
+    through 'dbplyr'.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends: 
+    R (>= 4.1)
+Imports: 
+    cli,
+    dplyr (>= 1.1.0),
+    purrr,
+    rlang (>= 1.1.0),
+    stringr,
+    tibble,
+    tidyr,
+    vctrs
+Suggests: 
+    dbplyr,
+    knitr,
+    readr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+LazyData: false
+Config/roxygen2/version: 8.1.0

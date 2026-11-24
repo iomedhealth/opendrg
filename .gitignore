@@ -1,0 +1,16 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+*.Rproj
+
+# Vendor installers, extracted payloads and oracle inputs are large and
+# redistributable only under their own terms; keep them out of git.
+/target/
+/dev/oracle/output/*.csv
+/dev/oracle/java/*.class
+
+# Local agent tooling
+/opencode.json
+/dev/oracle/java/build/

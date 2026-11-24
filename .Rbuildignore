@@ -1,0 +1,15 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^target$
+^dev$
+^data-raw$
+^opencode\.json$
+^\.opencode$
+^\.agents$
+^\.DS_Store$
+^\.github$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$

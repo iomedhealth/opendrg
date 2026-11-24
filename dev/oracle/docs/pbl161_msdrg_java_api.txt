@@ -1,0 +1,2508 @@
+Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+
+Java API guide
+
+
+
+
+Version 44.0   October 2026
+PBL-161
+
+
+Oracle and Java are registered trademarks of Oracle and/or its affiliates. Other names may be trademarks of
+their respective owners.
+
+If this product includes UB-04 information: Copyright 2026, American Hospital Association ("AHA"), Chicago,
+Illinois. Reproduced with permission. No portion of this publication may be reproduced, sorted in a retrieval
+system, or transmitted, in any form or by any means, electronic, mechanical, photocopying, recording or
+otherwise, without prior express, written consent of AHA.
+Table of Contents
+Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API
+Guide ........................................................................................................ 5
+    System requirements ................................................................................................................ 5
+    Dependency information........................................................................................................... 5
+    Calling the MS-DRG application................................................................................................. 6
+    Sample code .............................................................................................................................. 7
+    Support for multiple versions .................................................................................................... 9
+    Class and enum information.................................................................................................... 11
+         Class Runtime Options ...................................................................................................... 11
+             Constructors................................................................................................................ 11
+         Enum MsdrgAffectDrgOptionFlag ..................................................................................... 12
+         Enum MarkingLogicTieBreaker ......................................................................................... 12
+         Enum MsdrgHospitalStatusOptionFlag ............................................................................. 12
+         Class MsdrgRuntimeOption .............................................................................................. 13
+             Constructor ................................................................................................................. 13
+         Class MsdrgComponent .................................................................................................... 13
+             Constructor ................................................................................................................. 13
+         Class MsdrgClaim .............................................................................................................. 13
+             Constructor Detail....................................................................................................... 14
+             Method Detail ............................................................................................................. 14
+         Class MsdrgInput............................................................................................................... 15
+             Methods inherited from class java.lang.Object .......................................................... 16
+             Method Detail ............................................................................................................. 16
+         Class MsdrgInputBuilder ................................................................................................... 19
+             Methods inherited from class java.lang.Object .......................................................... 20
+             Method Detail ............................................................................................................. 20
+         Class MsdrgOutput............................................................................................................ 21
+             Methods inherited from class java.lang.Object .......................................................... 24
+             Method Detail ............................................................................................................. 24
+         Enum MsdrgHacStatus ...................................................................................................... 32
+         Enum MsdrgCodeSeverityFlag .......................................................................................... 32
+         Enum MsdrgPoaErrorCode ............................................................................................... 33
+         Enum MsdrgGroupingImpact ............................................................................................ 33
+         Enum GfcPOA .................................................................................................................... 34
+         Enum MsdrgSex ................................................................................................................ 34
+         Enum MsdrgMedSurgType ............................................................................................... 34
+         Enum MsdrgSeverity ......................................................................................................... 35
+         Enum MsdrgGrouperFlagHacStatus .................................................................................. 35
+         Enum MsdrgAdmitDxGrouperFlag .................................................................................... 36
+         Enum MsdrgGrouperReturnCode ..................................................................................... 36
+         Enum MsdrgDischargeStatus ............................................................................................ 37
+             Enum constant ............................................................................................................ 37
+         Class MsdrgInputDxCode .................................................................................................. 38
+                                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                            Java API guide                                   iii
+    Constructor and Description ....................................................................................... 38
+    Methods inherited from class java.lang.Object .......................................................... 38
+    Constructor Detail....................................................................................................... 38
+    Method Detail ............................................................................................................. 38
+Class MsdrgInputPrCode ................................................................................................... 39
+    Constructor and Description ....................................................................................... 39
+    Methods inherited from class java.lang.Object .......................................................... 39
+    Constructor Detail....................................................................................................... 39
+    Method Detail ............................................................................................................. 40
+Class MsdrgOutputDxCode ............................................................................................... 40
+    Constructor and Description ....................................................................................... 40
+    Methods inherited from class java.lang.Object .......................................................... 41
+    Constructor Detail....................................................................................................... 41
+    Method Detail ............................................................................................................. 41
+Class MsdrgOutputPrCode ................................................................................................ 42
+    Constructor and Description ....................................................................................... 42
+    Methods inherited from class java.lang.Object .......................................................... 43
+    Constructor Detail....................................................................................................... 43
+    Method Detail ............................................................................................................. 43
+Interface MsdrgOutputData ............................................................................................. 44
+    Method Detail ............................................................................................................. 46
+
+
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide                                iv
+Medicare Severity Diagnosis Related Groups
+(MS-DRG) Software Java API Guide
+       This document describes how to call the MS-DRG Software from a Java® application. It also notes
+       the necessary dependencies required to execute the MS-DRG Software. Suggested system
+       requirements are also provided. The use of MS-DRG software outside of a Java calling program is
+       also possible but outside the scope of this document. There is also an included sources jar for
+       MS-DRG.
+
+
+
+System requirements
+       Oracle®, OpenJDK, or other Java® Version 17 or greater.
+
+
+
+Dependency information
+       Table 1.        Solventum open source dependencies
+
+        Jar name                 Version       Purpose                                           Information
+        gfc-base-api-3.4.9.jar   3.4.9         Grouper Foundation Class Common grouper Solventum
+                                               calling framework and common business      created open
+                                               objects to standardize grouper development source binary
+                                               https://github.com/solventum-oss/GFC-Grou
+                                               per-Foundation-Classes
+       1.
+
+       Table 2.        Third party open source dependencies
+
+Third party software name        Version       Are the distributed       Purpose              Licensing
+                                               binaries modified by
+                                               Solventum?
+Google Protocol Buffers       3.25.5           No modification / Not a Embedded               Copyright 2021 Google
+Distributables:                                derivative work; only   content storage/       Inc. All rights reserved
+                                               aggregated with         processing speed       License Type: New BSD
+protobuf-java-3.25.5.jar
+                                               Solventum software.     optimization           License
+URL:
+https://developers.google.com                                                                 URL:
+/protocol-buffers                                                                             https://ptolemy.berkel
+                                                                                              ey.edu/ptolemyII/ptII1
+                                                                                              1.0/ptII/lib/protobuf-lic
+                                                                                              ense.htm
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide      5
+                                    Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+Third party software name          Version        Are the distributed       Purpose              Licensing
+                                                  binaries modified by
+                                                  Solventum?
+SLF4J API Distributables:          1.7.36         No modification / Not a Logging                Copyright (c)
+slf4j-api-.jar URL:                               derivative work; only                          2004-2017 QOS.ch
+http://www.slf4j.org/                             aggregated with                                License Type: SLF4j
+                                                  Solventum software.                            (MIT License) URL:
+                                                                                                 http://www.slf4j.org/li
+                                                                                                 cense.html
+        2.
+
+        Table 3.        Included Dependencies
+
+         Jar name                               Version     Purpose                           Information
+         msdrg-model-v2 2.12.2.jar              2.12.2      Provide access to component       Contained in ZIP file,
+                                                            objects.                          Separate *-sources Jar
+                                                                                              file also included
+         msdrg-core-44.0.0.3.jar                44.0.0.3    The MsDrg implementation          Contained in ZIP file.
+                                                            and embedded content.             Separate *-sources Jar
+                                                                                              file also included
+         msdrg-binary-access-1.6.4.jar          1.6.4       Provides access to component Contained in ZIP file.
+                                                            data                         Separate *-sources Jar
+                                                                                         file also included
+        3.
+
+
+
+
+Calling the MS-DRG application
+        The MS-DRG application can be called using the following steps:
+        1. Include the required dependencies on the classpath.
+        2. Initialize MsdrgRuntimeOption to set the component grouping configurations (see Class
+           MsdrgRuntimeOption (page 13)).
+        3. Initialize and populate RuntimeOptions to set the individual runtime configuration options
+           (see Class RuntimeOptions (page 11)).
+        4. Set RuntimeOptions on MsdrgRuntimeOption.
+        5. Populate and build class MsdrgInput to set patient demographic and claim information (see
+           Class MsdrgInput) (page 15). This is done by creating lists of MsdrgInputPrCode and
+           MsdrgInputDxCode and enums using the various “with” methods from MsdrgInputBuilder to
+           populate the Input followed by calling the .builder() method to create an immutable object.
+        6. Initialize MsdrgComponent and pass in MsdrgRuntimeOption as a parameter to create a new
+           instance of the component (see Class MsdrgComponent) (page 13).
+
+                                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                           Java API guide     6
+                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   7. Use the process() method on MsdrgComponent and pass in MsdrgClaim as a parameter to
+      group the claim.
+   8. Use the .getOutput() method on MsdrgClaim to get the results of grouping (see Class
+      MsdrgClaim (page 13)).
+
+   Note: The MsdrgComponent should not be set to null until all processing is complete. Setting the
+   component to null constantly in a batch setting (i.e. each time the component is called) will lead
+   to slower program execution.
+
+
+
+Sample code
+   This sample code illustrates the prior steps using hardcoded claim information.
+   4.
+   import com.mmm.his.cer.foundation.exception.FoundationException;
+   import com.mmm.his.cer.foundation.model.GfcPoa;
+   import gov.agency.msdrg.model.v2.MsdrgOption;
+   import gov.agency.msdrg.model.v2.MsdrgRuntimeOption;
+   import gov.agency.msdrg.model.v2.RuntimeOptions;
+   import gov.agency.msdrg.model.v2.enumeration.MarkingLogicTieBreaker;
+   import gov.agency.msdrg.model.v2.enumeration.MsdrgAffectDrgOptionFlag;
+   import gov.agency.msdrg.model.v2.enumeration.MsdrgDischargeStatus;
+   import
+   gov.agency.msdrg.model.v2.enumeration.MsdrgHospitalStatusOptionFlag;
+   import gov.agency.msdrg.model.v2.enumeration.MsdrgSex;
+   import gov.agency.msdrg.model.v2.transfer.MsdrgClaim;
+   import gov.agency.msdrg.model.v2.transfer.input.MsdrgInput;
+   import gov.agency.msdrg.model.v2.transfer.input.MsdrgInputDxCode;
+   import gov.agency.msdrg.model.v2.transfer.input.MsdrgInputPrCode;
+   import gov.agency.msdrg.model.v2.transfer.output.MsdrgOutputData;
+   import gov.agency.msdrg.v440.MsdrgComponent;
+   import java.util.ArrayList;
+   import java.util.List;
+   import java.util.Optional;
+
+   public class Main {
+      public static void main(String[] args) throws FoundationException {
+        //Initialize MsdrgRuntimeOption
+        MsdrgRuntimeOption runtimeOptions = new MsdrgRuntimeOption();
+        //Initialize RuntimeOptions
+        RuntimeOptions options = new RuntimeOptions();
+        //Set the three enums on RuntimeOptions
+
+   options.setPoaReportingExempt(MsdrgHospitalStatusOptionFlag.NON_EXEMPT);
+        options.setComputeAffectDrg(MsdrgAffectDrgOptionFlag.COMPUTE);
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide       7
+                      Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+options.setMarkingLogicTieBreaker(MarkingLogicTieBreaker.CLINICAL_SIGNIF
+ICANCE);
+     //Put RuntimeOptions on the MsdrgRuntimeOption map
+     runtimeOptions.put(MsdrgOption.RUNTIME_OPTION_FLAGS, options);
+     //Create list of procedure codes
+     List<MsdrgInputPrCode> procCodes = new ArrayList<>();
+     procCodes.add(new MsdrgInputPrCode("0TY00Z0"));
+     procCodes.add(new MsdrgInputPrCode("0FYG0Z0"));
+     procCodes.add(new MsdrgInputPrCode("5A1D70Z"));
+     //Create list of secondary diagnosis codes List<MsdrgInputDxCode>
+sdxCodes = new ArrayList<>(); sdxCodes.add(new MsdrgInputDxCode("E0800",
+GfcPoa.Y));
+     //Set up the claim input
+     MsdrgInput input = MsdrgInput.builder()
+         .withAdmissionDiagnosisCode(new MsdrgInputDxCode("I120",
+GfcPoa.Y))
+         .withAgeDaysAdmit(0)
+         .withAgeDaysDischarge(0)
+         .withAgeInYears(0)
+
+.withDischargeStatus(MsdrgDischargeStatus.HOME_SELFCARE_ROUTINE)
+         .withProcedureCodes(procCodes)
+         .withSex(MsdrgSex.MALE)
+         .withPrincipalDiagnosisCode(new MsdrgInputDxCode("I120",
+GfcPoa.Y))
+         .withSecondaryDiagnosisCodes(sdxCodes)
+         .build();
+     //create claim and pass in input
+     MsdrgClaim claim = new MsdrgClaim(input);
+
+        //initialize component with runtime options
+        MsdrgComponent component = new MsdrgComponent(runtimeOptions);
+        // Process the claim through the component
+        component.process(claim);
+        // Get output
+        Optional<MsdrgOutputData> output = claim.getOutput();
+
+    }
+}
+
+
+
+
+                           Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                          Java API guide       8
+                              Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+
+
+Support for multiple versions
+    This JAR contains support for versions back to 40.0. Users should remove the older versions of
+    the following JARs from their classpaths:
+    •    msdrg-v4XX-XX.X.X.X.jar
+    •    msdrg-model-v2-X.X.X.jar
+
+    and replace with the JARs specified in table 3 earlier in this document.
+
+    For versions older than 40.0, the following JARs should remain on the classpath:
+    •    msdrg-39.1.0.2.jar
+    •    msdrg-model-1.3.1.jar
+    •    msdrg-proto-generator-1.1.jar
+    •    msdrg-39.0.0.0.jar
+    •    msdrg-model-1.1.0.jar
+    •    msdrg-proto-generator-1.1.jar
+
+    An example of how to handle multiple grouper versions within an application is shown below.
+    Users can add a case to the existing switch statement to add newer versions.
+    5.
+        // Users will need to implement their own methodology for determining
+    the grouper version.
+        int version = 440;
+        Processable<MsdrgClaim, MsdrgOption, MsdrgRuntimeOption> component;
+        switch (version) {
+          case 400:
+            component = new
+    gov.agency.msdrg.v400.MsdrgComponent(runtimeOptions);
+            break;
+          case 401:
+            component = new
+    gov.agency.msdrg.v401.MsdrgComponent(runtimeOptions);
+            break;
+          case 410:
+            component = new
+    gov.agency.msdrg.v410.MsdrgComponent(runtimeOptions);
+            break;
+          case 411:
+            component = new
+    gov.agency.msdrg.v411.MsdrgComponent(runtimeOptions);
+            break;
+          case 420:
+
+                                    Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                   Java API guide      9
+                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+        component = new
+gov.agency.msdrg.v420.MsdrgComponent(runtimeOptions);
+        break;
+      case 421:
+        component = new
+gov.agency.msdrg.v421.MsdrgComponent(runtimeOptions);
+        break;
+      case 430:
+        component = new
+gov.agency.msdrg.v430.MsdrgComponent(runtimeOptions);
+        break;
+      case 431:
+        component = new
+gov.agency.msdrg.v431.MsdrgComponent(runtimeOptions);
+        break;
+      case 440:
+        component = new
+gov.agency.msdrg.v440.MsdrgComponent(runtimeOptions);
+        break;
+      default:
+        throw new Exception(
+            "Could not create component for version " + version);
+    }
+
+      // set the options on the component.
+      component.reconfigure(runtimeOptions);
+
+      // Process the claim through the component
+      component.process(claim);
+6.
+
+Note: For versions older than 40.0, the following JARs should remain on the classpath:
+•    msdrg-39.1.0.2.jar
+•    msdrg-model-1.3.1.jar
+•    msdrg-proto-generator-1.1.jar
+•    msdrg-39.0.0.0.jar
+•    msdrg-model-1.1.0.jar
+•    msdrg-proto-generator-1.1.jar
+
+
+
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide      10
+                                 Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+Class and enum information
+
+Class Runtime Options
+       Package gov.agency.msdrg.model.v2
+
+       public class RuntimeOptions
+
+
+Constructors
+       RuntimeOptions()
+       RuntimeOptions(MsdrgHospitalStatusOptionFlag poaReportingExempt,
+
+               MsdrgAffectDrgOptionFlag computeAffectDrg,
+
+               MarkingLogicTieBreaker markingLogicTieBreaker)
+
+       Table 4.       Method summary RuntimeOptions
+
+        Return type                     Method                                 Description
+        MsdrgAffectDrgOptionFlag        getComputeAffectDrg()                  Get enum value for
+                                                                               computing if a code affects
+                                                                               DRG
+        MarkingLogicTieBreaker          getMarkingLogicTieBreaker()            Get enum value for how to
+                                                                               break ties in marking logic
+        MsdrgHospitalStatusOptionFl     getPoaReportingExempt()                Get enum for hospital
+        ag                                                                     status on whether they are
+                                                                               exempt from reporting
+                                                                               POA
+        void                            setComputeAffectDrg(MsdrgAffect Set enum value whether to
+                                        DrgOptionFlag computerAffectDrg) compute
+        void                            setMarkingLogicTieBreaker(Markin Set enum value for how to
+                                        gLogicTieBreaker                 break ties in marking logic.
+                                        markingLogicTieBreaker)          Related to which code will
+                                                                         get marked as effecting
+                                                                         DRG assignment.
+        void                            setPoaReportingExempt(MsdrgHos Set enum value whether
+                                        pitalStatusOptionFlag          the hospital is exempt
+                                        poaReportingExempt)            from POA (present on
+                                                                       admission) reporting
+       7.
+
+
+
+
+                                      Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                     Java API guide      11
+                              Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Enum MsdrgAffectDrgOptionFlag
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgAffectDrgOptionFlag
+
+     Table 5.      Enum constant Msdrg Affecting DRG Option Flag
+
+      Enum constant               Description
+      COMPUTE                     (Default) Compute which codes affect DRG
+      DO_NOT_COMPUTE              Do not compute if codes affect DRG
+     8.
+
+
+
+Enum MarkingLogicTieBreaker
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MarkingLogicTieBreaker
+
+     Table 6.      Enum constant Marking Logic Tie Breaker
+
+      Enum constant                 Description
+      CLINICAL_SIGNIFICANCE         (Default) Will use codes in clinical significance order to break
+                                    ties in calculating which codes affect DRG assignment.
+      CODE_ORDER                    Will use the order codes are entered on the claim to break
+                                    ties in calculating which codes affect DRG assignment.
+     9.
+
+
+
+Enum MsdrgHospitalStatusOptionFlag
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgHospitalStatusOptionFlag
+
+     Table 7.      Enum constant Msdrg Hospital POA Reporting Status Option Flag
+
+      Enum constant      Description
+      EXEMPT             Hospital is exempt from reporting POA (present on admission)
+      NON_EXEMPT         Hospital is not exempt from reporting POA (present on
+                         admission)
+      UNKNOWN            (Default) Unknown
+     10.
+
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                  Java API guide       12
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Class MsdrgRuntimeOption
+      Package gov.agency.msdrg.model.v2
+
+      public class MsdrgRuntimeOption extends
+      com.mmm.his.cer.foundation.ComponentRuntime<MsdrgOption>
+
+
+Constructor
+      MsdrgRuntimeOption()
+
+
+
+Class MsdrgComponent
+      Package gov.agency.msdrg.v440
+
+      public class MsdrgComponent
+
+
+Constructor
+            MsdrgComponent(MsdrgRuntimeOption options)
+
+      Table 8.          Method summary MsdrgComponent
+
+       Return type            Method                                  Description
+       void                   close()                                 Close
+       RuntimeOptions         getOptions()                            Getter for runtime options.
+       protected void         initialize()                            Set up MSDRG component.
+       void                   process(MsdrgClaim claim)               Process a claim.
+                              throws FoundationException
+       void                   reconfigure(MsdrgRuntimeOption Change the runtime options for a
+                              option)                        different claim
+      11.
+
+
+
+Class MsdrgClaim
+      Package gov.agency.msdrg.model.v2.transfer
+
+      public class MsdrgClaim extends com.mmm.his.cer.foundation.transfer.Claim
+
+
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide   13
+                                    Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+       Table 9.           Method summary MsdrgClaim
+
+        Modifier and Type                              Method and Description
+        boolean                                        equals(java.lang.Object obj)
+        MsdrgInputData                                 getInput()
+                                                       Return the input data as an interface.
+        java.util.Optional<MsdrgOutputData>            getOutput()
+                                                       Get output data from this claim.
+        int                                            hashCode ()
+       12.
+
+
+Constructor Detail
+       MsdrgClaim
+
+       public MsdrgClaim(MsdrgInput input)
+
+       Constructor.
+
+
+Method Detail
+       getInput
+
+              public MsdrgInputData getInput()
+
+              Return the input data as an interface. Once set on the claim, the input data should not be
+              changed.
+
+       Returns:
+
+              claim input data as MsdrgInputData
+
+       getOutput
+
+              public java.util.Optional<MsdrgOutputData> getOutput()
+
+              Get output data from this claim. Depending on where in the lifecycle this is called, there may
+              or may not be output data, so this returns an Optional.
+
+       Returns:
+
+              Optional object containing MsdrgInputData.
+
+
+
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide      14
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+     setOutput
+
+            public void setOutput(MsdrgOutput output)
+
+            Set the output for this claim. Since we use side effects in GFC, this is the only way to return
+            output. However, we are only returning an interface to the output that only has getters
+            which provides some safety.
+
+     hashCode
+
+            public int hashCode()
+
+     Overrides:
+
+            hashCode in class java.lang.Object
+
+     equals
+
+            public boolean equals(java.lang.Object obj)
+
+     Overrides:
+
+            equals in class java.lang.Object
+
+
+
+Class MsdrgInput
+     Package gov.agency.msdrg.model.v2.transfer.input
+
+     Table 10.          Method summary MsdrgInput
+
+      Modifier and Type                                   Method and Description
+      static MsdrgInput.MsdrgInputBuilder                 builder()
+      boolean                                             equals(java.lang.Object obj)
+      java.util.Optional<MsdrgInputDxCode>                getAdmissionDiagnosisCode()
+                                                          Get the input admission diagnosis.
+      int                                                 getAgeDaysAdmit()
+                                                          Get the age (in number of days) on
+                                                          admission.
+      int                                                 getAgeDaysDischarge()
+                                                          Get the age (in number of days) on
+                                                          discharge.
+      int                                                 getAgeInYears()
+                                                          Get the patient age in years.
+
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide      15
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+        Modifier and Type                                 Method and Description
+        java.util.Optional<MsdrgDischargeStatus>          getDischargeStatus()
+                                                          Get the input discharge status.
+        java.util.Optional<MsdrgInputDxCode>              getPrincipalDiagnosisCode()
+                                                          Get the input principal diagnosis.
+        java.util.List<MsdrgInputPrCode>                  getProcedureCodes()
+                                                          Get the input procedure codes.
+        java.util.List<MsdrgInputDxCode>                  getSecondaryDiagnosisCodes()
+                                                          Get the input secondary diagnosis
+                                                          codes.
+        java.util.Optional<MsdrgSex>                      getSex()
+                                                          Get the input sex of the patient.
+        int                                               hashCode()
+        MsdrgInput.MsdrgInputBuilder                      toBuilder()
+       13.
+
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Method Detail
+       getAdmissionDiagnosisCode
+
+              public java.util.Optional<MsdrgInputDxCode>
+              getAdmissionDiagnosisCode()
+
+              Description copied from interface: MsdrgInputData
+
+              Get the input admission diagnosis.
+
+              Specified by:
+
+              getAdmissionDiagnosisCode in interface MsdrgInputData
+
+              Returns:
+
+              an Optional containing a MsdrgInputDxCode.
+
+
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide      16
+                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+getPrincipalDiagnosisCode
+
+   public java.util.Optional<MsdrgInputDxCode>
+   getPrincipalDiagnosisCode()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the input principal diagnosis.
+
+   Specified by:
+
+   getPrincipalDiagnosisCode in interface MsdrgInputData
+
+   Returns:
+
+   an Optional containing a MsdrgInputDxCode.
+
+getAgeInYears
+
+   public int getAgeInYears()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the patient age in years.
+
+   Specified by:
+
+   getAgeInYears in interface MsdrgInputData
+
+   Returns:
+
+   an integer representing the age.
+
+getDischargeStatus
+
+   public java.util.Optional<MsdrgDischargeStatus> getDischargeStatus()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the input discharge status..
+
+   Specified by:
+
+   getDischargeStatus in interface MsdrgInputData
+
+   Returns:
+
+   an Optional containing a MsdrgDischargeStatus.
+
+getAgeDaysAdmit
+
+   public int getAgeDaysAdmit()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the age (in number of days) on admission.
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide     17
+                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   Specified by:
+
+   getAgeDaysAdmit in interface MsdrgInputData
+
+   Returns:
+
+   an integer representing the age in days.
+
+getAgeDaysDischarge
+
+   public int getAgeDaysDischarge()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the age (in number of days) on discharge.
+
+   Specified by:
+
+   getAgeDaysDischarge in interface MsdrgInputData
+
+   Returns:
+
+   an integer representing the age in days.
+
+getSex
+
+   public java.util.Optional<MsdrgSex> getSex()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the input sex of the patient.
+
+   Specified by:
+
+   getSex in interface MsdrgInputData
+
+   Returns:
+
+   an Optional containing a MsdrgSex.
+
+getSecondaryDiagnosisCodes
+
+   public java.util.List<MsdrgInputDxCode> getSecondaryDiagnosisCodes()
+
+   Description copied from interface: MsdrgInputData
+
+   Get the input secondary diagnosis codes.
+
+   Specified by:
+
+   getSecondaryDiagnosisCodes in interface MsdrgInputData
+
+   Returns:
+
+   a List containing a MsdrgInputDxCode.
+
+
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide     18
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+     getProcedureCodes
+
+        public java.util.List<MsdrgInputPrCode> getProcedureCodes()
+
+        Description copied from interface: MsdrgInputData
+
+        Get the input procedure codes.
+
+        Specified by:
+
+        getProcedureCodes in interface MsdrgInputData
+
+        Returns:
+
+        a List containing a MsdrgInputPrCode.
+
+     builder
+
+        public static MsdrgInput.MsdrgInputBuilder builder()
+
+     toBuilder
+
+        public MsdrgInput.MsdrgInputBuilder toBuilder()
+
+        Specified by:
+
+        toBuilder in interface DataBuilder<MsdrgInput.MsdrgInputBuilder>
+
+     hashCode
+
+        public int hashCode()
+
+        Overrides:
+
+        hashCode in class java.lang.Object
+
+     equals
+
+        public boolean equals(java.lang.Object obj)
+
+        Overrides:
+
+        equals in class java.lang.Object
+
+
+
+Class MsdrgInputBuilder
+     Package gov.agency.msdrg.model.v2.transfer.input
+
+     public static final class MsdrgInput.MsdrgInputBuilder
+
+     extends java.lang.Object
+
+     Builder for MsdrgInput.
+
+
+                                     Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                    Java API guide      19
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+       Table 11.        Method Summary MsdrgInputBuilder
+
+        Modifier and Type                           Method and Description
+        MsdrgInput                                  build()
+                                                    Build a new instance.
+        MsdrgInput.MsdrgInputBuilder                withAdmissionDiagnosisCode(MsdrgInputDxCode ad
+                                                    missionDiagnosisCode)
+        MsdrgInput.MsdrgInputBuilder                withAgeDaysAdmit(int ageDaysAdmit)
+        MsdrgInput.MsdrgInputBuilder                withAgeDaysDischarge(int ageDaysDischarge)
+        MsdrgInput.MsdrgInputBuilder                withAgeInYears(int ageInYears)
+        MsdrgInput.MsdrgInputBuilder                withDischargeStatus(MsdrgDischargeStatus discharg
+                                                    eStatus)
+        MsdrgInput.MsdrgInputBuilder                withPrincipalDiagnosisCode(MsdrgInputDxCode prin
+                                                    cipalDiagnosisCode)
+        MsdrgInput.MsdrgInputBuilder                withProcedureCodes(java.util.List<MsdrgInputPrCod
+                                                    e> procedureCodes)
+        MsdrgInput.MsdrgInputBuilder                withSecondaryDiagnosisCodes(java.util.List<MsdrgIn
+                                                    putDxCode> secondaryDiagnosisCodes)
+        MsdrgInput.MsdrgInputBuilder                withSex(MsdrgSex sex)
+       14.
+
+
+Methods inherited from class java.lang.Object
+       equals, getClass, hashCode, notify, notifyAll, toString, wait, wait, wait
+
+
+Method Detail
+       withAdmissionDiagnosisCode
+
+             public MsdrgInput.MsdrgInputBuilder
+             withAdmissionDiagnosisCode(MsdrgInputDxCode admissionDiagnosisCode)
+
+       withPrincipalDiagnosisCode
+
+             public MsdrgInput.MsdrgInputBuilder
+             withPrincipalDiagnosisCode(MsdrgInputDxCode principalDiagnosisCode)
+
+       withAgeInYears
+
+             public MsdrgInput.MsdrgInputBuilder withAgeInYears(int ageInYears)
+
+
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide     20
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+     withDischargeStatus
+
+        public MsdrgInput.MsdrgInputBuilder
+        withDischargeStatus(MsdrgDischargeStatus dischargeStatus)
+
+     withAgeDaysAdmit
+
+        public MsdrgInput.MsdrgInputBuilder withAgeDaysAdmit(int ageDaysAdmit)
+
+     withAgeDaysDischarge
+
+        public MsdrgInput.MsdrgInputBuilder withAgeDaysDischarge(int
+        ageDaysDischarge)
+
+     withSex
+
+        public MsdrgInput.MsdrgInputBuilder withSex(MsdrgSex sex)
+
+     withSecondaryDiagnosisCodes
+
+        public MsdrgInput.MsdrgInputBuilder
+        withSecondaryDiagnosisCodes(java.util.List<MsdrgInputDxCode>
+        secondaryDiagnosisCodes)
+
+     withProcedureCodes
+
+        public MsdrgInput.MsdrgInputBuilder
+        withProcedureCodes(java.util.List<MsdrgInputPrCode> procedureCodes)
+
+     build
+
+        public MsdrgInput build()
+
+     Build a new instance.
+
+     Returns:
+
+     new instance of MsdrgInput.
+
+
+
+Class MsdrgOutput
+     Package gov.agency.msdrg.model.v2.transfer.output
+
+     public class MsdrgOutput
+
+     Table 12.      Method summary MsdrgOutput
+
+      Modifier and Type                                Method and Description
+      static MsdrgOutput.MsdrgOutputBuilder            static MsdrgOutput.MsdrgOutputBuilder
+      boolean                                          equals(java.lang.Object obj)
+
+
+                                     Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                    Java API guide      21
+                       Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+Modifier and Type                             Method and Description
+MsdrgValue<java.lang.Integer>                 getFinalBaseDrg()
+                                              Get the base diagnosis related group for the final
+                                              grouping.
+MsdrgValue<java.lang.Integer>                 getFinalDrg()
+                                              Get the diagnosis related group for the final
+                                              grouping.
+MsdrgSeverity                                 getFinalDrgSdxSeverity()
+                                              Get the Final DRG secondary diagnosis severity.
+MsdrgGrouperReturnCode                        getFinalGrc()
+                                              Get the grouper return code for the final
+                                              grouping.
+MsdrgValue<java.lang.Integer>                 getFinalMdc()
+                                              Get the major diagnostic category for the final
+                                              grouping.
+MsdrgMedSurgType                              getFinalMedSurgType()
+                                              Get the MsdrgMedSurgType for initial grouping.
+MsdrgSeverity                                 getFinalSeverity()
+                                              The final claim severity.
+MsdrgGrouperFlags                             getGrouperFlags()
+                                              Get the grouper flags used during processing.
+MsdrgHacStatus                                getHacStatus()
+                                              Get the HAC status.
+
+MsdrgValue<java.lang.Integer>                 getInitialBaseDrg()
+                                              Get the base diagnosis related group for the
+                                              initial grouping.
+
+MsdrgValue<java.lang.Integer>                 getInitialDrg()
+                                              Get the diagnosis related group for the initial
+                                              grouping.
+
+MsdrgSeverity                                 getInitialDrgSdxSeverity()
+                                              Get the Initial DRG secondary diagnosis severity.
+
+
+
+
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                           Java API guide       22
+                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+ Modifier and Type                             Method and Description
+ MsdrgGrouperReturnCode                        getInitialGrc()
+                                               Get the grouper return code for the initial
+                                               grouping.
+
+ MsdrgValue<java.lang.Integer>                 getInitialMdc()
+                                               Get the major diagnostic category for the initial
+                                               grouping.
+
+ MsdrgMedSurgType                              getInitialMedSurgType()
+                                               Get the MsdrgMedSurgType for initial grouping.
+
+
+ MsdrgSeverity                                 getInitialSeverity()
+                                               The initial claim severity.
+
+ int                                           getNumHacCategoriesSatisfied()
+                                               Get the number of distinct HAC categories that
+                                               were satisfied.
+
+ MsdrgOutputDxCode                             getPdxOutput()
+                                               Get principal diagnosis output.
+
+ java.util.List<MsdrgOutputPrCode>             getProcOutput()
+                                               Get all procedure output as a list.
+
+ MsdrgOutputPrCode                             getProcOutput(int procCodeIndex)
+                                               Get procedure output by index, starting at 0 for
+                                               the first pr
+
+ java.util.List<MsdrgOutputDxCode>             getSdxOutput()
+                                               Get all secondary diagnosis output as a list.
+
+ MsdrgOutputDxCode                             getSdxOutput(int sdxCodeIndex)
+                                               Get secondary diagnosis output by index, starting
+                                               at 0 for the first se
+
+ int                                           hashCode()
+ MsdrgOutput.MsdrgOutputBuilder                toBuilder()
+
+15.
+
+
+
+                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                            Java API guide      23
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Method Detail
+       getGrouperFlags
+
+           public MsdrgGrouperFlags getGrouperFlags()
+
+           Description copied from interface: MsdrgOutputData
+
+           Get the grouper flags used during processing.
+
+           Specified by:
+
+           getGrouperFlags in interface MsdrgOutputData
+
+           Returns:
+
+           an MsdrgGrouperFlags object.
+
+       getInitialGrc
+
+           public MsdrgGrouperReturnCode getInitialGrc()
+
+           Description copied from interface: MsdrgOutputData
+
+           Get the grouper return code for the initial grouping.
+
+           Specified by:
+
+           getInitialGrc in interface MsdrgOutputData
+
+           Returns:
+
+           a MsdrgGrouperReturnCode
+
+       getInitialMdc
+
+           public MsdrgValue<java.lang.Integer> getInitialMdc()
+
+           Description copied from interface: MsdrgOutputData
+
+           Get the major diagnostic category for the initial grouping.
+
+           Specified by:
+
+           getInitialMdc in interface MsdrgOutputData
+
+           Returns:
+
+           a MsdrgValue representing the major diagnostic category and description.
+
+
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide     24
+                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+getInitialDrg
+
+    public MsdrgValue<java.lang.Integer> getInitialDrg()
+
+    Description copied from interface: MsdrgOutputData
+
+    Get the diagnosis related group for the initial grouping.
+
+    Specified by:
+
+    getInitialDrg in interface MsdrgOutputData
+
+    Returns:
+
+    a MsdrgValue representing the diagnosis related group and description.
+
+getInitialMedSurgType
+
+    public MsdrgMedSurgType getInitialMedSurgType()
+
+    Description copied from interface: MsdrgOutputData
+
+    Get the MsdrgMedSurgType for initial grouping.
+
+    Specified by:
+
+    getInitialMedSurgType in interface MsdrgOutputData
+
+    Returns:
+
+    an enum representing the type.
+
+getInitialBaseDrg
+
+    public MsdrgValue<java.lang.Integer> getInitialBaseDrg()
+
+    Description copied from interface: MsdrgOutputData
+
+    Get the base diagnosis related group for the initial grouping.
+
+    Specified by:
+
+    getInitialBaseDrg in interface MsdrgOutputData
+
+    Returns:
+
+    a MsdrgValue representing the base diagnosis related group and description.
+
+getFinalGrc
+
+    public MsdrgGrouperReturnCode getFinalGrc()
+
+    Description copied from interface: MsdrgOutputData
+
+    Get the grouper return code for the final grouping.
+
+
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                               Java API guide     25
+                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   Specified by:
+
+   getFinalGrc in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgGrouperReturnCode
+
+getFinalMdc
+
+   public MsdrgValue<java.lang.Integer> getFinalMdc()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the major diagnostic category for the final grouping.
+
+   Specified by:
+
+   getFinalMdc in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgValue representing the major diagnostic category and description.
+
+getFinalDrg
+
+   public MsdrgValue<java.lang.Integer> getFinalDrg()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the diagnosis related group for the final grouping.
+
+   Specified by:
+
+   getFinalDrg in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgValue representing the diagnosis related group and description.
+
+getFinalMedSurgType
+
+   public MsdrgMedSurgType getFinalMedSurgType()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the MsdrgMedSurgType for initial grouping.
+
+   Specified by:
+
+   getFinalMedSurgType in interface MsdrgOutputData
+
+   Returns:
+
+   an enum representing the type.
+
+
+
+                              Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                             Java API guide      26
+                           Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+getPdxOutput
+
+   public MsdrgOutputDxCode getPdxOutput()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get principal diagnosis output.
+
+   Specified by:
+
+   getPdxOutput in interface MsdrgOutputData
+
+   Returns:
+
+   an instance of MsdrgOutputDxCode that contains all output for the principal diagnosis.
+
+getFinalBaseDrg
+
+   public MsdrgValue<java.lang.Integer> getFinalBaseDrg()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the base diagnosis related group for the final grouping.
+
+   Specified by:
+
+   getFinalBaseDrg in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgValue representing the base diagnosis related group and description.
+
+getFinalDrgSdxSeverity
+
+   public MsdrgSeverity getFinalDrgSdxSeverity()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the Final DRG secondary diagnosis severity.
+
+   Specified by:
+
+   getFinalDrgSdxSeverity in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgSeverity
+
+getInitialDrgSdxSeverity
+
+   public MsdrgSeverity getInitialDrgSdxSeverity()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the Initial DRG secondary diagnosis severity.
+
+
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                               Java API guide      27
+                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   Specified by:
+
+   getInitialDrgSdxSeverity in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgSeverity
+
+getNumHacCategoriesSatisfied
+
+   public int getNumHacCategoriesSatisfied()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the number of distinct HAC categories that were satisfied.
+
+   Specified by:
+
+   getNumHacCategoriesSatisfied in interface MsdrgOutputData
+
+   Returns:
+
+   int representing the number of HAC categories.
+
+getHacStatus
+
+   public MsdrgHacStatus getHacStatus()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get the HAC status.
+
+   Specified by:
+
+   getHacStatus in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgHacStatus
+
+getSdxOutput
+
+   public java.util.List<MsdrgOutputDxCode> getSdxOutput()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get all secondary diagnosis output as a list. NOTE: if a null is passed as part of the input
+   secondary diagnosis list, the grouper will process it with "NULL" as the code and N as the
+   poa. This will result in a MsdrgOutputDxCode being created even for null input.
+
+   Specified by:
+
+   getSdxOutput in interface MsdrgOutputData
+
+
+
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide      28
+                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+   Returns:
+
+   an UNMODIFIABLE collection of MsdrgOutputDxCodes that represents all secondary
+   diagnosis output. The order of the output in the returned list will match the order of the
+   codes in the input secondary diagnosis list.
+
+getSdxOutput
+
+   public MsdrgOutputDxCode getSdxOutput(int sdxCodeIndex)
+
+    throws com.mmm.his.cer.foundation.exception.FoundationException
+
+   Description copied from interface: MsdrgOutputData
+
+   Get secondary diagnosis output by index, starting at 0 for the first secondary diagnosis code.
+   NOTE: if a null is passed as part of the input secondary diagnosis list, the grouper will process
+   it with "NULL" as the code and N as the poa. This will result in a MsdrgOutputDxCode being
+   created even for null input.
+
+   Specified by:
+
+   getSdxOutput in interface MsdrgOutputData
+
+   Parameters:
+
+   sdxCodeIndex - the index of the secondary diagnosis code as it appeared in the input list.
+
+   Returns:
+
+   a MsdrgOutputDxCode if there was output at the provided index.
+
+   Throws:
+
+   com.mmm.his.cer.foundation.exception.FoundationException - if the index provided causes
+   an error trying to get output.
+
+getProcOutput
+
+   public java.util.List<MsdrgOutputPrCode> getProcOutput()
+
+   Description copied from interface: MsdrgOutputData
+
+   Get all procedure output as a list. NOTE: if a null is passed as part of the input procedure list,
+   the grouper will process it with "NULL" as the code. This will result in a MsdrgOutputPrCode
+   being created even for null input.
+
+   Specified by:
+
+   getProcOutput in interface MsdrgOutputData
+
+
+
+
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                               Java API guide     29
+                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+   Returns:
+
+   an UNMODIFIABLE collection of MsdrgOutputPrCodes that represents all procedure output.
+   The order of the output in the returned list will match the order of the codes in the input
+   procedure list.
+
+getProcOutput
+
+   public MsdrgOutputPrCode getProcOutput(int procCodeIndex)
+
+     throws com.mmm.his.cer.foundation.exception.FoundationException
+
+   Description copied from interface: MsdrgOutputData
+
+   Get procedure output by index, starting at 0 for the first procedure code. NOTE: if a null is
+   passed as part of the input procedure list, the grouper will process it with "NULL" as the
+   code. This will result in a MsdrgOutputPrCode being created even for null input.
+
+   Specified by:
+
+   getProcOutput in interface MsdrgOutputData
+
+   Parameters:
+
+   procCodeIndex - the index of the procedure code as it appeared in the input list.
+
+   Returns:
+
+   a MsdrgOutputDxCode if there was output at the provided index.
+
+   Throws:
+
+   com.mmm.his.cer.foundation.exception.FoundationException - if the index provided causes
+   an error trying to get output.
+
+getFinalSeverity
+
+   public MsdrgSeverity getFinalSeverity()
+
+   Description copied from interface: MsdrgOutputData
+
+   The final claim severity.
+
+   Specified by:
+
+   getFinalSeverity in interface MsdrgOutputData
+
+   Returns:
+
+   a MsdrgSeverity.
+
+
+
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide       30
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+getInitialSeverity
+
+    public MsdrgSeverity getInitialSeverity()
+
+    Description copied from interface: MsdrgOutputData
+
+    The initial claim severity.
+
+    Specified by:
+
+    getInitialSeverity in interface MsdrgOutputData
+
+    Returns:
+
+    a MsdrgSeverity.
+
+builder
+
+    public static MsdrgOutput.MsdrgOutputBuilder builder()
+
+toBuilder
+
+    public MsdrgOutput.MsdrgOutputBuilder toBuilder()
+
+equals
+
+    public boolean equals(java.lang.Object obj)
+
+    Overrides:
+
+    equals in class java.lang.Object
+
+hashCode
+
+    public int hashCode()
+
+    Overrides:
+
+    hashCode in class java.lang.Object
+
+
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide     31
+                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+
+
+Enum MsdrgHacStatus
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgHacStatus
+
+     Table 13.      Enum constant Msdrg Hospital Acquired Condition Status
+
+      Enum constant                         Description
+      NOT_ON_HAC_LIST                       Diagnosis code is not on a HAC list
+      HAC_CRITERIA_MET                      HAC's formula has been met
+      HAC_CRITERIA_NOT_MET                  HAC's formula has not been met
+      HAC_NOT_APPLICABLE_EXCLUSION          HAC's not applicable because the
+                                            code is an exclusion
+      HAC_NOT_APPLICABLE_EXEMPT             HAC not applicable due to hospital
+                                            exemption
+     16.
+
+
+
+Enum MsdrgCodeSeverityFlag
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgCodeSeverityFlag
+
+     Table 14.      Enum constant Msdrg Code Severity Flag
+
+      Enum constant                        Description
+      MCC                                  Code was a MCC
+      CC                                   Code was a CC
+      MCC_EXCLUDED_BY_DRG_LOGIC            Code was a MCC but ignored due to
+                                           exclusion by DRG logic
+      CC_EXCLUDED_BY_DRG_LOGIC             Code was a CC but ignore due to
+                                           exclusion by DRG logic
+      MCC_EXCLUDED                         Code was a MCC but ignored due to
+                                           exclusions
+      CC_EXCLUDED                          Code was a CC but ignored due to
+                                           exclusions
+      NEITHER                              Code was NCC
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide      32
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+     17.
+
+
+
+Enum MsdrgPoaErrorCode
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgPoaErrorCode
+
+     Table 15.     Enum constant Msdrg Present On Admission Error Code
+
+      Enum constant                       Description
+      POA_NOT_CHECKED                     POA not checked
+      POA_NOT_RECOGNIZED                  POA is not recognized
+      POA_RECOGNIZED_NOT_POA              POA is a valid value meaning "NO"
+      POA_RECOGNIZED_YES_POA              POA is a valid value meaning "YES"
+      HOSPITAL_EXEMPT                     Hospital is exempt from reporting POA
+      BLANK_DX_NOT_CONSIDERED             Diagnosis code not considered
+     18.
+
+
+
+Enum MsdrgGroupingImpact
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgGroupingImpact
+
+     Table 16.     Enum constant Msdrg Grouping Impact
+
+      Enum constant        Description
+      INITIAL              Code impacted DRG assignment only in
+                           initial grouping
+      FINAL                Code impacted DRG assignment only in
+                           final grouping
+      BOTH                 Code impacted DRG assignment in both
+                           initial and final grouping
+      NONE                 Code did not impact DRG assignment
+     19.
+
+
+
+
+                                 Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                Java API guide      33
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Enum GfcPOA
+     Package com.mmm.his.cer.foundation.model
+
+     public enum GfcPoa
+
+     Table 17.     Enum constant Gfc Present on Admission
+
+      Enum constant       Description
+      Y                   Yes
+      N                   No
+      U                   Insufficient documentation to determine if present
+                          on admission
+      W                   Clinically unable to determine a time of admission
+      ONE                 Exempt from POA reporting/Unreported/ Not used
+      E                   Exempt from POA reporting/ Unreported/Not used
+      BLANK               Exempt from POA reporting/ Unreported/Not used
+      INVALID             Invalid
+     20.
+
+
+
+Enum MsdrgSex
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgSex
+
+     Table 18.     Enum constant MsdrgSex
+
+      Enum constant                 Description
+      UNKNOWN                       Unknown
+      MALE                          Male
+      FEMALE                        Female
+     21.
+
+
+
+Enum MsdrgMedSurgType
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgMedSurgType
+
+
+                                      Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                     Java API guide     34
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+     Table 19.     Enum constant Msdrg Medical Surgical Type
+
+      Enum constant              Description
+      MEDICAL                    DRG is Medical
+      NONE                       DRG is neither
+      SURGICAL                   DRG is Surgical
+     22.
+
+
+
+Enum MsdrgSeverity
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     public enum MsdrgSeverity
+
+     Table 20.     Enum constant Msdrg Severity
+
+      Enum constant        Description
+      CC                   Complication or comorbidity
+      MCC                  Major complications or comorbidities
+      NON_CC               No complications or comorbidities
+     23.
+
+
+
+Enum MsdrgGrouperFlagHacStatus
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     Table 21.     Enum constant Msdrg Grouper Flag Hospital Acquired Condition Status
+
+      Enum constant                   Description
+      FINAL_DRG_CHANGES               Final DRG changes after processing HACs(hospital
+                                      acquired conditions) (HAC processing only occurs during
+                                      final grouping)
+      FINAL_DRG_NO_CHANGE             No change between initial and final grouping due to HACs
+      FINAL_DRG_UNGROUPABLE           When processing HAC's the claim is ungroupable
+      NOT_APPLICABLE                  N/A
+     24.
+
+
+
+
+                                     Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                    Java API guide   35
+                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Enum MsdrgAdmitDxGrouperFlag
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     Table 22.      Enum constant Msdrg Admit Diagnosis Grouper Flag
+
+      Enum constant            Description
+      DX_INVALID               Admission diagnosis is invalid
+      DX_NOT_GIVEN             No admission diagnosis on claim
+      DX_VALID                 Admission diagnosis is valid
+     25.
+
+
+
+Enum MsdrgGrouperReturnCode
+     Package gov.agency.msdrg.model.v2.enumeration
+
+     Table 23.      Enum constant Msdrg Grouper Return Code
+
+      Enum constant                      Description
+      DX_CANNOT_BE_PDX                   Grouping stopped due to invalid
+                                         principal diagnosis
+      HAC_MISSING_ONE_POA                HAC processing stopped due to a missing
+                                         POA value
+      HAC_STATUS_INVALID_MULT_HA         Hospital Status is invalid or missing and
+      CS_POA_NOT_Y_W                     there are multiple HACs that have
+                                         different HAC POA values that are not Y
+                                         orW
+      HAC_STATUS_INVALID_POA_INVA Hospital Status is invalid or missing and
+      LID_OR_1                    at least one POA is invalid or missing or 1
+      HAC_STATUS_INVALID_POA_N_O         Hospital Status is invalid or missing and
+      R_U                                at least one POA is N or U
+      INVALID_DISCHARGE_STATUS           Invalid discharge status
+      INVALID_PDX                        Invalid principal diagnosis
+      INVALID_SEX                        Invalid sex
+      OK                                 DRG successfully assigned
+     26.
+
+
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide      36
+                             Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Enum MsdrgDischargeStatus
+      Package gov.agency.msdrg.model.v2.enumeration
+
+      public enum MsdrgDischargeStatus
+
+
+Enum constant
+      CANC_CHILD_HOSP
+      CANC_CHILD_HOSP_W_PLANNED_READMISSION
+      COURT_LAW_ENFRC
+      COURT_LAW_ENFRC_W_PLANNED_READMISSION
+      CRIT_ACC_HOSP
+      CRIT_ACC_HOSP_W_PLANNED_READMISSION
+      CUST_SUPP_CARE
+      CUST_SUPP_CARE_W_PLANNED_READMISSION
+      DESIGNATED_DISASTER_ALTERNATIVE_CARE_SITE
+      DIED
+      FEDERAL_HOSPITAL
+      FEDERAL_HOSPITAL_W_PLANNED_READMISSION
+      HOME_HEALTH_SERVICE
+      HOME_HEALTH_SERVICE_W_PLANNED_READMISSION
+      HOME_SELF_CARE_W_PLANNED_READMISSION
+      HOME_SELFCARE_ROUTINE
+      HOSPICE_HOME
+      HOSPICE_MEDICAL_FACILITY
+      LEFT_AGAINST_MEDICAL_ADVICE
+      LONG_TERM_CARE_HOSPITAL
+      LTCH_W_PLANNED_READMISSION
+      NONE
+      NURSG_FAC_MEDICAID_CERT_W_PLANNED_READMISSION
+      NURSING_FACILITY_MEDICAID_CERTIFIED
+      OTH_INSTITUTION
+      OTH_INSTITUTION_W_PLANNED_READMISSION
+      PSYCH_HOSP_UNIT
+      PSYCH_HOSP_UNIT_W_PLANNED_READMISSION
+      REHAB_FACILITY_REHAB_UNIT
+      REHAB_FACILITY_UNIT_W_PLANNED_READMISSION
+      SHORT_TERM_HOSPITAL
+      SHORT_TERM_HOSPITAL_W_PLANNED_READMISSION
+      SNF
+      SNF_W_PLANNED_READMISSION
+      STILL_A_PATIENT
+      SWING_BED
+      SWING_BED_W_PLANNED_READMISSION
+
+
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide      37
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Class MsdrgInputDxCode
+       Package gov.agency.msdrg.model.v2.transfer.input
+
+       public class MsdrgInputDxCode
+       extends java.lang.Object
+
+       Immutable class for DX input codes.
+
+
+Constructor and Description
+       MsdrgInputDxCode(java.lang.String value, com.mmm.his.cer.foundation.model.GfcPoa poa)
+
+       Table 24.        Method summary MsdrgDiagnosisCode
+
+        Modifier and Type                         Method and Description
+        boolean                                   equals(java.lang.Object obj)
+        com.mmm.his.cer.foundation.model. getPoa()
+        GfcPoa
+        java.lang.String                          getValue()
+        int                                       hashCode ()
+       27.
+
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Constructor Detail
+       MsdrgInputDxCode
+
+              public MsdrgInputDxCode(java.lang.String value,
+
+              com.mmm.his.cer.foundation.model.GfcPoa poa)
+
+
+Method Detail
+       getValue
+
+              public java.lang.String getValue()
+
+       getPoa
+
+              public com.mmm.his.cer.foundation.model.GfcPoa getPoa()
+
+
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide     38
+                                    Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+       equals
+
+              public boolean equals(java.lang.Object obj)
+
+              Overrides:
+
+              equals in class java.lang.Object
+
+       hashCode
+
+              public int hashCode()
+
+              Overrides:
+
+              hashCode in class java.lang.Object
+
+
+
+Class MsdrgInputPrCode
+       public class MsdrgInputPrCode
+       extends java.lang.Object
+
+       Immutable class for PR input codes.
+
+
+Constructor and Description
+       MsdrgInputPrCode(java.lang.String value)
+
+       Table 25.           Method summary MsdrgProcedureCode
+
+        Modifier and Type               Method and Description
+        boolean                         equals(java.lang.Object o)
+        java.lang.String                getValue()
+        int                             hashCode()
+       28.
+
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Constructor Detail
+       MsdrgInputPrCode
+
+       public MsdrgInputPrCode(java.lang.String value)
+
+
+
+                                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                         Java API guide     39
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+Method Detail
+       getValue
+
+           public java.lang.String getValue()
+
+       equals
+
+           public boolean equals(java.lang.Object o)
+
+           Overrides:
+
+           equals in class java.lang.Object
+
+       hashCode
+
+           public int hashCode()
+
+           Overrides:
+
+           hashCode in class java.lang.Object
+
+
+
+Class MsdrgOutputDxCode
+       gov.agency.msdrg.model.v2.transfer.MsdrgOutputDxCode
+
+       public class MsdrgOutputDxCode
+       extends java.lang.Object
+
+       Container class that wraps all data regarding the output for a diagnosis code.
+
+
+Constructor and Description
+       MsdrgOutputDxCode(MsdrgInputDxCode inputDxCode, MsdrgDiagnosisFlag flags)
+
+       Table 26.           Method Summary Class MsdrgOutputDxCode
+
+        Modifier and Type                     Method and Description
+        boolean                               equals(java.lang.Object obj)
+        MsdrgGroupingImpact                   getDiagnosisAffectsDrg()
+        MsdrgCodeSeverityFlag                 getFinalSeverityUsage()
+        java.util.List<MsdrgHac>              getHacs()
+        MsdrgCodeSeverityFlag                 getInitialSeverityUsage()
+        MsdrgInputDxCode                      getInputDxCode()
+        java.lang.String                      getLegacyFlagString()
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide      40
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+        Modifier and Type                     Method and Description
+        MsdrgPoaErrorCode                     getPoaErrorCode()
+        int                                   hashCode()
+        boolean                               isDiagnosisRecognizedByGrouper()
+       29.
+
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Constructor Detail
+       public MsdrgOutputDxCode(MsdrgInputDxCode inputDxCode,
+                                MsdrgDiagnosisFlag flags)
+
+
+Method Detail
+       getInputDxCode
+
+       public MsdrgInputDxCode getInputDxCode()
+
+       isDiagnosisRecognizedByGrouper
+
+              public boolean isDiagnosisRecognizedByGrouper()
+
+       getDiagnosisAffectsDrg
+
+              public MsdrgGroupingImpact getDiagnosisAffectsDrg()
+
+       getFinalSeverityUsage
+
+              public MsdrgCodeSeverityFlag getFinalSeverityUsage()
+
+       getInitialSeverityUsage
+
+              public MsdrgCodeSeverityFlag getInitialSeverityUsage()
+
+       getPoaErrorCode
+
+              public MsdrgPoaErrorCode getPoaErrorCode()
+
+       getHacs
+
+              public java.util.List<MsdrgHac> getHacs()
+
+       getLegacyFlagString
+
+              public java.lang.String getLegacyFlagString()
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide     41
+                                 Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+       equals
+
+           public boolean equals(java.lang.Object obj)
+
+           Overrides:
+
+           equals in class java.lang.Object
+
+       hashCode
+
+           public int hashCode()
+
+           Overrides:
+
+           hashCode in class java.lang.Object
+
+
+
+Class MsdrgOutputPrCode
+       gov.agency.msdrg.model.v2.transfer.output.MsdrgOutputPrCode
+
+       public class MsdrgOutputPrCode
+       extends java.lang.Object
+
+       Container class that wraps all data regarding the output for a procedure code.
+
+
+Constructor and Description
+       MsdrgOutputPrCode(MsdrgInputPrCode inputPrCode, MsdrgProcedureFlag flags)
+
+       Table 27.        Method Summary Class MsdrgOutputPrCode
+
+        Modifier and Type                              Method and Description
+
+        boolean                                        equals(java.lang.Object o)
+
+
+        java.util.Set<MsdrgProcedureHacUsage>          getHacUsage()
+
+
+        MsdrgInputPrCode                               getInputPrCode()
+
+
+        java.lang.String                               getLegacyFlagString()
+
+
+        MsdrgGroupingImpact                            getProcedureAffectsDrg()
+
+
+
+
+                                       Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                      Java API guide     42
+                                   Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+        Modifier and Type                                Method and Description
+
+        int                                              hashCode()
+
+
+        boolean                                          isProcedureIsOperatingRoomProcedure()
+
+
+        boolean                                          isProcedureRecognizedByGrouper()
+
+
+       30.
+
+
+Methods inherited from class java.lang.Object
+       getClass, notify, notifyAll, toString, wait, wait, wait
+
+
+Constructor Detail
+       MsdrgOutputPrCode
+
+       public MsdrgOutputPrCode(MsdrgInputPrCode inputPrCode,
+                                MsdrgProcedureFlag flags)
+
+
+Method Detail
+       getInputPrCode
+
+              public MsdrgInputPrCode getInputPrCode()
+
+       isProcedureRecognizedByGrouper
+
+              public boolean isProcedureRecognizedByGrouper()
+
+       getProcedureAffectsDrg
+
+              public MsdrgGroupingImpact getProcedureAffectsDrg()
+
+       isProcedureIsOperatingRoomProcedure
+
+              public boolean isProcedureIsOperatingRoomProcedure()
+
+       getHacUsage
+
+              public java.util.Set<MsdrgProcedureHacUsage> getHacUsage()
+
+       getLegacyFlagString
+
+              public java.lang.String getLegacyFlagString()
+
+                                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                        Java API guide     43
+                              Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+     equals
+
+        public boolean equals(java.lang.Object o)
+
+        Overrides:
+
+        equals in class java.lang.Object
+
+     hashCode
+
+        public int hashCode()
+
+        Overrides:
+
+        hashCode in class java.lang.Object
+
+
+
+Interface MsdrgOutputData
+     public interface MsdrgOutputData
+
+     Output data interface.
+
+     Table 28.        Method Summary Interface MsdrgOutputData
+
+      Modifier and Type                        Method and Description
+      MsdrgValue<java.lang.Integer>            getFinalBaseDrg()
+                                               Get the base diagnosis related group for the
+                                               final grouping.
+      MsdrgValue<java.lang.Integer>            getFinalDrg()
+                                               Get the diagnosis related group for the final
+                                               grouping.
+      MsdrgSeverity                            getFinalDrgSdxSeverity()
+                                               Get the Final DRG secondary diagnosis
+                                               severity.
+      MsdrgGrouperReturnCode                   getFinalGrc()
+                                               Get the grouper return code for the final
+                                               grouping.
+      MsdrgValue<java.lang.Integer>            getFinalMdc()
+                                               Get the major diagnostic category for the final
+                                               grouping.
+      MsdrgMedSurgType                         getFinalMedSurgType()
+                                               Get the MsdrgMedSurgType for initial
+                                               grouping.
+
+
+
+                                    Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                   Java API guide     44
+                       Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+Modifier and Type                      Method and Description
+MsdrgSeverity                          getFinalSeverity()
+                                       The final claim severity.
+MsdrgGrouperFlags                      getGrouperFlags()
+                                       Get the grouper flags used during processing.
+MsdrgHacStatus                         getHacStatus()
+                                       Get the HAC status.
+MsdrgValue<java.lang.Integer>          getInitialBaseDrg()
+                                       Get the base diagnosis related group for the
+                                       initial grouping.
+MsdrgValue<java.lang.Integer>          getInitialDrg()
+                                       Get the diagnosis related group for the initial
+                                       grouping.
+MsdrgSeverity                          getInitialDrgSdxSeverity()
+                                       Get the Initial DRG secondary diagnosis
+                                       severity.
+MsdrgGrouperReturnCode                 getInitialGrc()
+                                       Get the grouper return code for the initial
+                                       grouping.
+MsdrgValue<java.lang.Integer>          getInitialMdc()
+                                       Get the major diagnostic category for the
+                                       initial grouping.
+MsdrgMedSurgType                       getInitialMedSurgType()
+                                       Get the MsdrgMedSurgType for initial
+                                       grouping.
+MsdrgSeverity                          getInitialSeverity()
+                                       The initial claim severity.
+int                                    getNumHacCategoriesSatisfied()
+                                       Get the number of distinct HAC categories
+                                       that were satisfied.
+MsdrgOutputDxCode                      getPdxOutput()
+                                       Get principal diagnosis output.
+java.util.List<MsdrgOutputPrCode>      getProcOutput()
+                                       Get all procedure output as a list.
+MsdrgOutputPrCode                      getProcOutput(int procCodeIndex)
+                                       Get procedure output by index, starting at 0
+                                       for the first procedure code.
+
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                           Java API guide      45
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+
+       Modifier and Type                           Method and Description
+       java.util.List<MsdrgOutputDxCode>           getSdxOutput()
+                                                   Get all secondary diagnosis output as a list.
+       MsdrgOutputDxCode                           getSdxOutput(int sdxCodeIndex)
+                                                   Get secondary diagnosis output by index,
+                                                   starting at 0 for the first secondary diagnosis
+                                                   code.
+      31.
+
+
+Method Detail
+      getGrouperFlags
+
+            MsdrgGrouperFlags getGrouperFlags()
+
+            Get the grouper flags used during processing.
+
+            Returns:
+
+            an MsdrgGrouperFlags object.
+
+      getInitialGrc
+
+            MsdrgGrouperReturnCode getInitialGrc()
+
+            Get the grouper return code for the initial grouping.
+
+            Returns:
+
+            a MsdrgGrouperReturnCode
+
+      getInitialMdc
+
+            MsdrgValue<java.lang.Integer> getInitialMdc()
+
+            Get the major diagnostic category for the initial grouping.
+
+            Returns:
+
+            a MsdrgValue representing the major diagnostic category and description.
+
+      getInitialDrg
+
+            MsdrgValue<java.lang.Integer> getInitialDrg()
+
+            Get the diagnosis related group for the initial grouping.
+
+            Returns:
+
+            a MsdrgValue representing the diagnosis related group and description.
+
+
+                                        Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                       Java API guide     46
+                         Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+getInitialMedSugType
+
+   MsdrgMedSurgType getInitialMedSurgType()
+
+   Get the MsdrgMedSurgType for initial grouping.
+
+   Returns:
+
+   an enum representing the type.
+
+getInitialBaseDrg
+
+   MsdrgValue<java.lang.Integer> getInitialBaseDrg()
+
+   Get the base diagnosis related group for the initial grouping.
+
+   Returns:
+
+   a MsdrgValue representing the base diagnosis related group and description.
+
+getFinalGrc
+
+   MsdrgGrouperReturnCode getFinalGrc()
+
+   Get the grouper return code for the final grouping.
+
+   Returns:
+
+   a MsdrgGrouperReturnCode
+
+getFinalMdc
+
+   MsdrgValue<java.lang.Integer> getFinalMdc()
+
+   Get the major diagnostic category for the final grouping.
+
+   Returns:
+
+   a MsdrgValue representing the major diagnostic category and description.
+
+getFinalDrg
+
+   MsdrgValue<java.lang.Integer> getFinalDrg()
+
+   Get the diagnosis related group for the final grouping.
+
+   Returns:
+
+   a MsdrgValue representing the diagnosis related group and description.
+
+getFinalMedSurgType
+
+   MsdrgMedSurgType getFinalMedSurgType()
+
+   Get the MsdrgMedSurgType for initial grouping.
+
+   Returns:
+
+                               Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                              Java API guide     47
+                           Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   an enum representing the type.
+
+getFinalBaseDrg
+
+   MsdrgValue<java.lang.Integer> getFinalBaseDrg()
+
+   Get the base diagnosis related group for the final grouping.
+
+   Returns:
+
+   a MsdrgValue representing the base diagnosis related group and description.
+
+getFinalDrgSdxSeverity
+
+   MsdrgSeverity getFinalDrgSdxSeverity()
+
+   Get the Final DRG secondary diagnosis severity.
+
+   Returns:
+
+   a MsdrgSeverity
+
+getInitialDrgSdxSeverity
+
+   MsdrgSeverity getInitialDrgSdxSeverity()
+
+   Get the Initial DRG secondary diagnosis severity.
+
+   Returns:
+
+   a MsdrgSeverity
+
+getNumHacCategoriesSatisfied
+
+   int getNumHacCategoriesSatisfied()
+
+   Get the number of distinct HAC categories that were satisfied.
+
+   Returns:
+
+   int representing the number of HAC categories.
+
+getHacStatus
+
+   MsdrgHacStatus getHacStatus()
+
+   Get the HAC status.
+
+   Returns:
+
+   a MsdrgHacStatus
+
+getPdxOutput
+
+   MsdrgOutputDxCode getPdxOutput()
+
+   Get principal diagnosis output.
+
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                               Java API guide      48
+                          Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+   Returns:
+
+   an instance of MsdrgOutputDxCode that contains all output for the principal diagnosis.
+
+getSdxOutput
+
+   java.util.List<MsdrgOutputDxCode> getSdxOutput()
+
+   Get all secondary diagnosis output as a list. NOTE: if a null is passed as part of the input
+   secondary diagnosis list, the grouper will process it with "NULL" as the code and N as the
+   poa. This will result in a MsdrgOutputDxCode being created even for null input.
+
+   Returns:
+
+   an UNMODIFIABLE collection of MsdrgOutputDxCodes that represents all secondary
+   diagnosis output. The order of the output in the returned list will match the order of the
+   codes in the input secondary diagnosis list.
+
+getSdxOutput
+
+   MsdrgOutputDxCode getSdxOutput(int sdxCodeIndex)
+
+   throws com.mmm.his.cer.foundation.exception.FoundationException
+
+   Get secondary diagnosis output by index, starting at 0 for the first secondary diagnosis code.
+   NOTE: if a null is passed as part of the input secondary diagnosis list, the grouper will process
+   it with "NULL" as the code and N as the poa. This will result in a MsdrgOutputDxCode being
+   created even for null input.
+
+   Parameters:
+
+   sdxCodeIndex - the index of the secondary diagnosis code as it appeared in the input list.
+
+   Returns:
+
+   a MsdrgOutputDxCode if there was output at the provided index.
+
+   Throws:
+
+   com.mmm.his.cer.foundation.exception.FoundationException - if the index provided causes
+   an error trying to get output.
+
+getProcOutput
+
+   java.util.List<MsdrgOutputPrCode> getProcOutput()
+
+   Get all procedure output as a list. NOTE: if a null is passed as part of the input procedure list,
+   the grouper will process it with "NULL" as the code. This will result in a MsdrgOutputPrCode
+   being created even for null input.
+
+   Returns:
+
+   an UNMODIFIABLE collection of MsdrgOutputPrCodes that represents all procedure output.
+   The order of the output in the returned list will match the order of the codes in the input
+   procedure list.
+                                Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                               Java API guide     49
+                            Medicare Severity Diagnosis Related Groups (MS-DRG) Software Java API Guide
+
+getProcOutput
+
+    MsdrgOutputPrCode getProcOutput(int procCodeIndex)
+
+    throws com.mmm.his.cer.foundation.exception.FoundationException
+
+    Get procedure output by index, starting at 0 for the first procedure code. NOTE: if a null is
+    passed as part of the input procedure list, the grouper will process it with "NULL" as the
+    code. This will result in a MsdrgOutputPrCode being created even for null input.
+
+    Parameters:
+
+    procCodeIndex - the index of the procedure code as it appeared in the input list.
+
+    Returns:
+
+    a MsdrgOutputDxCode if there was output at the provided index.
+
+    Throws:
+
+    com.mmm.his.cer.foundation.exception.FoundationException - if the index provided causes
+    an error trying to get output.
+
+getFinalSeverity
+
+    MsdrgSeverity getFinalSeverity()
+
+    The final claim severity.
+
+    Returns:
+
+    a MsdrgSeverity.
+
+getInitialSeverity
+
+    MsdrgSeverity getInitialSeverity()
+
+    The initial claim severity.
+
+    Returns:
+
+    a MsdrgSeverity.
+
+
+
+
+                                  Medicare Severity Diagnosis Related Groups (MS-DRG) Software
+                                                                                 Java API guide     50
+
