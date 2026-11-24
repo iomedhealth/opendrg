@@ -1,4 +1,4 @@
-# Compare opengrd's MS-DRG output with the CMS Java oracle over TESTDB.
+# Compare opendrg's MS-DRG output with the CMS Java oracle over TESTDB.
 #
 # Usage: Rscript dev/compare-oracle.R [n_claims|all] [version]
 
@@ -59,4 +59,4 @@ if (nrow(bad) > 0) {
   cat("\nSample mismatches:\n")
   print(bad |> select(claim_id, exp_drg, drg, exp_initial_drg, initial_drg, exp_mdc, mdc, exp_rc, return_code, exp_sev, sev, formula) |> head(15), width = 200)
 }
-readr::write_csv(cmp, file.path(dir, paste0("opengrd_vs_oracle_", prefix, ".csv")))
+readr::write_csv(cmp, file.path(dir, paste0("opendrg_vs_oracle_", prefix, ".csv")))

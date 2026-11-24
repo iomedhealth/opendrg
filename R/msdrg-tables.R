@@ -2,14 +2,14 @@
 
 msdrg_cache <- new.env(parent = emptyenv())
 
-#' List the MS-DRG versions bundled with opengrd
+#' List the MS-DRG versions bundled with opendrg
 #'
 #' @return A character vector of version labels such as `"44.0"`.
 #' @export
 #' @examples
 #' msdrg_versions()
 msdrg_versions <- function() {
-  files <- list.files(system.file("extdata", "msdrg", package = "opengrd"), pattern = "^v[0-9]+\\.rds$")
+  files <- list.files(system.file("extdata", "msdrg", package = "opendrg"), pattern = "^v[0-9]+\\.rds$")
   vapply(files, function(f) {
     digits <- sub("^v([0-9]+)\\.rds$", "\\1", f)
     paste0(substr(digits, 1, nchar(digits) - 1), ".", substr(digits, nchar(digits), nchar(digits)))
@@ -33,7 +33,7 @@ msdrg_tables <- function(version = NULL) {
   }
   available <- msdrg_versions()
   if (length(available) == 0) {
-    cli::cli_abort("No MS-DRG tables are bundled with this installation of opengrd.")
+    cli::cli_abort("No MS-DRG tables are bundled with this installation of opendrg.")
   }
   version <- version %||% available[[length(available)]]
   if (!version %in% available) {
@@ -45,7 +45,7 @@ msdrg_tables <- function(version = NULL) {
   }
   key <- paste0("v", gsub(".", "", version, fixed = TRUE))
   if (!exists(key, envir = msdrg_cache, inherits = FALSE)) {
-    path <- system.file("extdata", "msdrg", paste0(key, ".rds"), package = "opengrd")
+    path <- system.file("extdata", "msdrg", paste0(key, ".rds"), package = "opendrg")
     assign(key, msdrg_prepare_tables(readRDS(path)), envir = msdrg_cache)
   }
   get(key, envir = msdrg_cache, inherits = FALSE)

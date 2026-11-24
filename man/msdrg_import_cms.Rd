@@ -26,7 +26,7 @@ decision formulas (\code{DRGLOGIC}), diagnosis and procedure attribute patterns
 (\code{DXPATERN}, \code{PRPATERN}), the code-to-pattern maps (\code{DXLIST}, \code{PRLIST}), the
 attribute vocabularies (\code{DXATTLST}, \code{PRATTLST}), the CC/MCC exclusion list
 (\code{EXCLUSN}), procedure clusters (\code{PRCLSTRS}) and descriptions (\code{MDCDSC},
-\code{DRGDSC4}). This function parses them into tidy tables that the opengrd
+\code{DRGDSC4}). This function parses them into tidy tables that the opendrg
 engine evaluates.
 }
 \examples{

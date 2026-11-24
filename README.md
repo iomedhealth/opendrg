@@ -1,10 +1,14 @@
-# opengrd
+# opendrg
+
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/iomedhealth/opendrg/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/iomedhealth/opendrg/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
 
 Open, portable implementations of hospital casemix groupers in R.
 
 Casemix groupers assign hospital stays to payment/costing groups — DRGs in the
 US, HRGs in England — from diagnosis and procedure codes. The official
-implementations ship as platform-specific binaries. `opengrd` re-implements
+implementations ship as platform-specific binaries. `opendrg` re-implements
 them as **published logic tables + a small evaluation engine** in plain R, so
 grouping can run anywhere R runs, on data frames, and (by design) eventually
 inside databases through dbplyr.
@@ -17,8 +21,8 @@ inside databases through dbplyr.
 ## Usage
 
 ```r
-# remotes::install_github("iomedhealth/opengrd")
-library(opengrd)
+# remotes::install_github("iomedhealth/opendrg")
+library(opendrg)
 
 claims <- data.frame(claim_id = 1, age = 67, sex = "M", discharge_status = "01")
 diagnoses <- data.frame(
@@ -43,7 +47,7 @@ CMS and NHS England both publish the complete grouping logic as data:
 
 * **MS-DRG**: the mainframe release contains `DRGLOGIC` (one boolean formula
   per DRG, e.g. `(PDX:dxc0306) & (MCC)`), diagnosis/procedure attribute
-  patterns, the CC/MCC exclusion list and procedure clusters. `opengrd`
+  patterns, the CC/MCC exclusion list and procedure clusters. `opendrg`
   compiles the formulas to dplyr expressions and evaluates them in CMS's order
   (pre-MDC → principal-diagnosis MDC → reroutes), with the same severity,
   exclusion, cluster and hospital-acquired-condition rules as the Java

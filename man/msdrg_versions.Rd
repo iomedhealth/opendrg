@@ -2,7 +2,7 @@
 % Please edit documentation in R/msdrg-tables.R
 \name{msdrg_versions}
 \alias{msdrg_versions}
-\title{List the MS-DRG versions bundled with opengrd}
+\title{List the MS-DRG versions bundled with opendrg}
 \usage{
 msdrg_versions()
 }
@@ -10,7 +10,7 @@ msdrg_versions()
 A character vector of version labels such as \code{"44.0"}.
 }
 \description{
-List the MS-DRG versions bundled with opengrd
+List the MS-DRG versions bundled with opendrg
 }
 \examples{
 msdrg_versions()

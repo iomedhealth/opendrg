@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(opengrd)
+library(opendrg)
 
-test_check("opengrd")
+test_check("opendrg")

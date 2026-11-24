@@ -9,7 +9,7 @@
 #' @param version Version label, e.g. `"44.0"` for MS-DRG FY 2027. Defaults
 #'   to the latest bundled version. May also be a table set built with
 #'   [msdrg_import_cms()].
-#' @return An object of class `opengrd_grouper`.
+#' @return An object of class `opendrg_grouper`.
 #' @export
 #' @examples
 #' g <- grouper("msdrg", version = "44.0")
@@ -21,7 +21,7 @@ grouper <- function(system = c("msdrg", "hrg4plus"), version = NULL) {
       tbls <- msdrg_tables(version)
       structure(
         list(system = "msdrg", version = tbls$version, tables = tbls),
-        class = c("msdrg_grouper", "opengrd_grouper")
+        class = c("msdrg_grouper", "opendrg_grouper")
       )
     },
     hrg4plus = cli::cli_abort("The HRG4+ grouper is not implemented yet.")
@@ -29,9 +29,9 @@ grouper <- function(system = c("msdrg", "hrg4plus"), version = NULL) {
 }
 
 #' @export
-print.opengrd_grouper <- function(x, ...) {
+print.opendrg_grouper <- function(x, ...) {
   label <- switch(x$system, msdrg = "CMS MS-DRG", hrg4plus = "NHS England HRG4+", x$system)
-  cat(sprintf("<opengrd grouper> %s, version %s\n", label, x$version))
+  cat(sprintf("<opendrg grouper> %s, version %s\n", label, x$version))
   if (x$system == "msdrg") {
     t <- x$tables
     n_drg <- length(unique(t$drg_logic$drg[t$drg_logic$drg > 0]))

@@ -7,7 +7,7 @@
 #' Split`), the formal definition of every condition flag (`Simple Flags`),
 #' and the code lists those flags refer to (CC, hierarchy, combination,
 #' global and other lists). This function parses the workbook into tidy
-#' tables for the opengrd engine.
+#' tables for the opendrg engine.
 #'
 #' @param path Path to the `... Code To Group ... .xlsx` workbook.
 #' @param version Version label, e.g. `"2024-25-nc"` (National Costs 2024/25).
@@ -44,11 +44,12 @@ hrg_import_code_to_group <- function(path, version) {
   # "HRG 1, Flag 1, HRG 2, Flag 2, ..." pairs to long format.
   pairs_long <- function(df, id_cols, value_prefix, out_name) {
     n <- sum(grepl(paste0("^", value_prefix, " [0-9]+$"), names(df)))
-    purrr::map_dfr(seq_len(n), function(i) {
+    purrr::map(seq_len(n), function(i) {
       value <- clean(df[[paste(value_prefix, i)]])
       tibble::tibble(df[id_cols], rank = i, !!out_name := value, flag = clean(df[[paste("Flag", i)]])) |>
         dplyr::filter(!is.na(.data[[out_name]]))
     }) |>
+      purrr::list_rbind() |>
       dplyr::arrange(dplyr::across(dplyr::all_of(c(id_cols, "rank"))))
   }
 

@@ -15,7 +15,7 @@ to the latest bundled version. May also be a table set built with
 \code{\link[=msdrg_import_cms]{msdrg_import_cms()}}.}
 }
 \value{
-An object of class \code{opengrd_grouper}.
+An object of class \code{opendrg_grouper}.
 }
 \description{
 A grouper object bundles a grouping system, a version of its logic tables

@@ -6,7 +6,7 @@
 #' (`DXPATERN`, `PRPATERN`), the code-to-pattern maps (`DXLIST`, `PRLIST`), the
 #' attribute vocabularies (`DXATTLST`, `PRATTLST`), the CC/MCC exclusion list
 #' (`EXCLUSN`), procedure clusters (`PRCLSTRS`) and descriptions (`MDCDSC`,
-#' `DRGDSC4`). This function parses them into tidy tables that the opengrd
+#' `DRGDSC4`). This function parses them into tidy tables that the opendrg
 #' engine evaluates.
 #'
 #' @param dir Path to the folder containing the flat files.

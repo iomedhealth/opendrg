@@ -14,3 +14,4 @@
 # Local agent tooling
 /opencode.json
 /dev/oracle/java/build/
+/tests/testthat/_problems/

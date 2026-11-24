@@ -21,7 +21,7 @@ catalogue, which codes trigger which subchapters and map to which HRG
 roots (\verb{Code To Group}), how roots split into final HRGs (\verb{Group To Split}), the formal definition of every condition flag (\verb{Simple Flags}),
 and the code lists those flags refer to (CC, hierarchy, combination,
 global and other lists). This function parses the workbook into tidy
-tables for the opengrd engine.
+tables for the opendrg engine.
 }
 \examples{
 \dontrun{

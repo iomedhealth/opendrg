@@ -53,7 +53,7 @@ test_that("compiled expressions evaluate correctly on a wide claim table", {
 })
 
 test_that("every bundled v44.0 DRGLOGIC formula parses and round-trips", {
-  tbls <- readRDS(system.file("extdata", "msdrg", "v440.rds", package = "opengrd"))
+  tbls <- readRDS(system.file("extdata", "msdrg", "v440.rds", package = "opendrg"))
   asts <- lapply(tbls$drg_logic$formula, msdrg_formula_parse)
   expect_length(asts, nrow(tbls$drg_logic))
   # Round-trip: deparse(parse(x)) must parse to an identical tree.

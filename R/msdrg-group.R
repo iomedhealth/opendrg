@@ -414,9 +414,10 @@ msdrg_hac_pass <- function(ctx, tbls, initial, poa_exempt) {
     dplyr::left_join(msdrg_wide_dx(ids, dx_attr, terms, ctx), by = "claim_id") |>
     dplyr::left_join(msdrg_wide_pr(ids, pr_attr, terms, exclude = msdrg_specials), by = "claim_id") |>
     dplyr::left_join(ctx$flags, by = "claim_id")
-  hits <- purrr::map2_dfr(tbls$hac_formulas$hac_number, tbls$hac_formulas$expr, function(h, expr) {
+  hits <- purrr::map2(tbls$hac_formulas$hac_number, tbls$hac_formulas$expr, function(h, expr) {
     tibble::tibble(claim_id = ids, hac = h, hit = dplyr::coalesce(rlang::eval_tidy(expr, data = wide), FALSE))
-  })
+  }) |>
+    purrr::list_rbind()
 
   show <- dx_attr |>
     dplyr::filter(.data$attribute == "hac06_show") |>

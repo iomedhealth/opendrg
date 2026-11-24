@@ -1,8 +1,8 @@
-Package: opengrd
+Package: opendrg
 Title: Open, Portable Implementations of Hospital Casemix Groupers
 Version: 0.0.0.9000
 Authors@R: 
-    person("Gabriel", "Maeztu", , "gabriel.maeztu@example.com", role = c("aut", "cre"))
+    person("Gabriel", "Maeztu", , "gabriel.maeztu@gmail.com", role = c("aut", "cre"))
 Description: Re-implements hospital casemix grouping logic in R so that it can be
     run anywhere, without vendor binaries. Groupers are expressed as published
     logic tables plus a small evaluation engine, starting with the CMS Medicare

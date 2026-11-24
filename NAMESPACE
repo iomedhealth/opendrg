@@ -3,7 +3,7 @@
 S3method(group,msdrg_grouper)
 S3method(print,hrg_tables)
 S3method(print,msdrg_tables)
-S3method(print,opengrd_grouper)
+S3method(print,opendrg_grouper)
 export(group)
 export(grouper)
 export(hrg_import_code_to_group)
@@ -14,6 +14,7 @@ export(msdrg_tables)
 export(msdrg_versions)
 importFrom(rlang,
   "%||%",
+  ":=",
   .data,
   .env
 )
