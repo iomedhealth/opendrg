@@ -55,6 +55,16 @@ test_that("renal dataset records match NHS England's expected results", {
   expect_equal(got$nrd_hrg, fixture$nrd$expected$NRD_HRG)
 })
 
+test_that("paediatric critical care days match NHS England's expected results", {
+  got <- hrg_group_pcc(fixture$pcc$input, tables = tbls)
+  expect_equal(got$pcc_hrg[order(got$sorted_row)], fixture$pcc$expected$PCC_HRG)
+})
+
+test_that("neonatal critical care days match NHS England's expected results", {
+  got <- hrg_group_ncc(fixture$ncc$input, tables = tbls)
+  expect_equal(got$ncc_hrg[order(got$sorted_row)], fixture$ncc$expected$NCC_HRG)
+})
+
 test_that("grouper() exposes the HRG4+ engines by dataset", {
   g <- grouper("hrg4plus", version = "2024-25-nc")
   expect_s3_class(g, "hrg_grouper")

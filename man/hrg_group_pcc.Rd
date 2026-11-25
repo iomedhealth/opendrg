@@ -14,8 +14,11 @@ hrg_group_pcc(days, tables = hrg_tables())
 \item{tables}{Tables from \code{\link[=hrg_tables]{hrg_tables()}}.}
 }
 \value{
-A tibble with \code{pcc_hrg} and \code{quality} per day.
+A tibble in input order with \code{pcc_hrg}, \code{sorted_row} and \code{quality}.
 }
 \description{
-Group paediatric critical care days to HRG4+
+One HRG per critical-care day, following the Subchapter XB flowchart.
+Days are sorted by \code{PROCODET}, \code{CCLocalID} and \code{CCDate}; the per-period
+history that steps 25-27 need is accumulated along the way and reset when
+the unit function changes.
 }

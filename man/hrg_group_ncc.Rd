@@ -14,8 +14,8 @@ hrg_group_ncc(days, tables = hrg_tables())
 \item{tables}{Tables from \code{\link[=hrg_tables]{hrg_tables()}}.}
 }
 \value{
-A tibble with \code{ncc_hrg} and \code{quality} per day.
+A tibble in input order with \code{ncc_hrg}, \code{sorted_row} and \code{quality}.
 }
 \description{
-Group neonatal critical care days to HRG4+
+One HRG per critical-care day, following the Subchapter XA flowchart.
 }

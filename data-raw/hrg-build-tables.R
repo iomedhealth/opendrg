@@ -28,6 +28,8 @@ tbls$combination_codes$description <- NULL
 # treatment hierarchies.
 tbls$em_hierarchy <- tibble::as_tibble(utils::read.csv("data-raw/hrg/em-hierarchy.csv",
   colClasses = c("character", "character", "integer")))
+# ... and the paediatric critical care isolation diagnosis list (Subchapter XB).
+tbls$pcc_isolation <- utils::read.csv("data-raw/hrg/pcc-isolation-list.csv", colClasses = "character")$code
 print(tbls)
 
 out_dir <- file.path("inst", "extdata", "hrg")

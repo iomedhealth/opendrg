@@ -16,7 +16,7 @@ inside databases through dbplyr.
 | Grouper | Status | Validation |
 |---|---|---|
 | CMS **MS-DRG** v43.0, v43.1 (FY 2026), v44.0 (FY 2027) | Working | 9,864 / 9,864 CMS TESTDB claims identical to CMS's grouper for every version: final & initial DRG, MDC, return code, severity, HAC handling |
-| NHS England **HRG4+** 2024/25 National Costs (admitted patient care) | Working | 750 / 750 official test episodes and 477 / 477 spells identical to NHS England's expected results: episode & spell HRG, grouping method, dominant procedure, unbundled HRGs, PBC |
+| NHS England **HRG4+** 2024/25 National Costs and 2025/26 Local Payment (all 7 datasets) | Working | Every record of NHS England's official test data identical to the expected results: admitted patient care (750 episodes, 477 spells), outpatients (200), emergency medicine (300), adult / paediatric / neonatal critical care (250 / 250 / 300), renal (200) |
 
 ## Usage
 
@@ -41,6 +41,7 @@ h <- grouper("hrg4plus", version = "2024-25-nc")
 res <- group(h, episodes)      # DIAG_01.., OPER_01.., STARTAGE, SEX, EPIDUR, ...
 res$episodes                   # fce_hrg, grouping_method, dominant_procedure, unbundled_hrgs, spell_hrg, ...
 res$spells
+group(h, attendances, dataset = "nac")   # outpatients; also "em", "acc", "pcc", "ncc", "nrd"
 ```
 
 Inputs are long-format data frames (one row per claim / diagnosis /
