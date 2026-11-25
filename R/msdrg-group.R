@@ -11,7 +11,10 @@
 #'
 #' @param claims Data frame with one row per claim: `claim_id`, `sex`
 #'   (0 unknown, 1 male, 2 female; `"M"`/`"F"` accepted), `discharge_status`
-#'   (two-character UB-04 code), and optionally `age`.
+#'   (two-character UB-04 code), and optionally `age`. May also be a list
+#'   with `claims`, `diagnoses` and `procedures` elements, as returned by
+#'   [cmbd_to_msdrg()], in which case the other two arguments are taken from
+#'   it.
 #' @param diagnoses Data frame with one row per diagnosis: `claim_id`, `seq`
 #'   (1 = principal diagnosis), `code` (ICD-10-CM, dots optional), and
 #'   optionally `poa` (present-on-admission indicator).
@@ -29,6 +32,11 @@ msdrg_group <- function(claims, diagnoses, procedures = NULL, tables = msdrg_tab
                         poa_exempt = c("unknown", "non_exempt", "exempt")) {
   tbls <- msdrg_tables(tables)
   poa_exempt <- rlang::arg_match(poa_exempt)
+  if (is.list(claims) && !is.data.frame(claims) && all(c("claims", "diagnoses") %in% names(claims))) {
+    procedures <- procedures %||% claims$procedures
+    diagnoses <- diagnoses %||% claims$diagnoses
+    claims <- claims$claims
+  }
   inp <- msdrg_prepare_input(claims, diagnoses, procedures)
   ctx <- msdrg_build_context(inp, tbls)
 

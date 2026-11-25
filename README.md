@@ -227,6 +227,35 @@ programme of care `A07`, *specialised colorectal services*. Outpatient
 attendances are flagged with `dataset = "nac"`. The service-line catalogue with
 names and hierarchies is in `p$tables$service_lines`.
 
+### Spanish hospital data (CMBD / RAE-CMBD)
+
+Spain's discharge register codes diagnoses and procedures in CIE-10-ES, which
+is the Spanish translation of ICD-10-CM/PCS, so Spanish records can be grouped
+with the MS-DRG engine as they are. Spain's own payment classification is a
+different, proprietary system (3M/Solventum APR-GRD) whose logic is not
+published, so it cannot be bundled; MS-DRG gives Spanish data an open,
+verifiable casemix classification instead. `cmbd_to_msdrg()` takes the
+register's wide layout (RD 69/2015 names such as `D1`..`D20`, `POAD1`..,
+`PROC1`.., `SEXO`, `TIPALT`, `FECNAC`, `FECINICONT`, and common variants)
+and maps the Spanish code lists to the CMS conventions (sex, destination
+after discharge → UB-04 status, POA `S/N/D/I/E` → `Y/N/U/W/1`, age from the
+birth date):
+
+```r
+rae <- data.frame(
+  FECNAC = "15031957", SEXO = "1", FECINICONT = "02052024 1130", TIPCONT = "1",
+  TIPALT = "4",                                   # exitus
+  D1 = "I21.4", D2 = "E11.9", D3 = "N17.9", POAD1 = "S", POAD2 = "S", POAD3 = "N"
+)
+group(grouper("msdrg", version = "44.0"), cmbd_to_msdrg(rae))[c("drg", "drg_description")]
+#>   drg drg_description
+#> 1 284 ACUTE MYOCARDIAL INFARCTION, EXPIRED WITH CC
+```
+
+Filter to hospitalisation contacts (`TIPCONT == 1`) before grouping; the
+contact type is carried through in `claims$contact_type`. Mind the code-year
+lag: CIE-10-ES 2024 corresponds to ICD-10-CM/PCS FY2022–23.
+
 ## Glossary
 
 | Term | Meaning |

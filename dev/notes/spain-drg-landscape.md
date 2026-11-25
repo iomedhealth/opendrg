@@ -138,10 +138,11 @@ confirms, and where the Spanish deployment differs from the document.
    options are: ask the site to attach the GRD fields already present in its CMBD (every SNS
    hospital receives them), or wrap the site's licensed 3M CGS batch interface (the PPT shows it
    is file-in/file-out, UI or command line) — not an opendrg deliverable.
-5. An MS-DRG run on Spanish data needs a small input adapter: `Tipo Alta` → UB-04 discharge
-   status (4 → 20 died, 2 → 02 transfer, 3 → 07 left against advice, 1 → 01 home, …), sex 3/9 →
-   unknown, age from `Fecha de nacimiento`, POA from `POAD*` (S/N/D/I → Y/N/U/W). The same
-   mapping is what the CGS deployment does internally for APR.
+5. An MS-DRG run on Spanish data needs a small input adapter — now `cmbd_to_msdrg()` in
+   `R/cmbd.R`: `TIPALT` → UB-04 discharge status (1 → 01, 2 → 02, 3 → 07, 4 → 20, 5 → 03,
+   8 → 01, 9 → missing), `SEXO` 3/9 → unknown, age from `EDAD` or `FECNAC` and the contact start
+   date (the register's ddmmyyyy / ddmmyy / ISO formats), `POAD*` S/N/D/I/E → Y/N/U/W/1,
+   `PROCEXT*` optional. The same mapping is what the CGS deployment does internally for APR.
 
 ## 5. Sources
 

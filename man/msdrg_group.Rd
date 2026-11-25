@@ -15,7 +15,10 @@ msdrg_group(
 \arguments{
 \item{claims}{Data frame with one row per claim: \code{claim_id}, \code{sex}
 (0 unknown, 1 male, 2 female; \code{"M"}/\code{"F"} accepted), \code{discharge_status}
-(two-character UB-04 code), and optionally \code{age}.}
+(two-character UB-04 code), and optionally \code{age}. May also be a list
+with \code{claims}, \code{diagnoses} and \code{procedures} elements, as returned by
+\code{\link[=cmbd_to_msdrg]{cmbd_to_msdrg()}}, in which case the other two arguments are taken from
+it.}
 
 \item{diagnoses}{Data frame with one row per diagnosis: \code{claim_id}, \code{seq}
 (1 = principal diagnosis), \code{code} (ICD-10-CM, dots optional), and

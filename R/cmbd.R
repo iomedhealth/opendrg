@@ -1,0 +1,248 @@
+# Adapter from the Spanish hospital discharge register (CMBD / RAE-CMBD) to the
+# MS-DRG input tables. CIE-10-ES is the Spanish translation of ICD-10-CM/PCS, so
+# the codes group as they are; the demographic and discharge fields use Spanish
+# code lists that are mapped here to the CMS conventions.
+
+cmbd_aliases <- list(
+  sex = "^(SEXO|SEX)$",
+  age = "^(EDAD|AGE)$",
+  birth_date = "^(FECNAC|FECHA_?NAC(IMIENTO)?|FNAC)$",
+  start_date = "^(FECINICONT|FECINICIO|FECHA_?INGRESO|FECING(RESO)?|FECINGHOSP|FECHA_?INICIO(_CONTACTO)?)$",
+  discharge = "^(TIPALT|TIPALTA|TIPO_?ALTA|MOTALTA|DESTINO)$",
+  contact_type = "^(TIPCONT|TIPONT|TIPO_?CONTACTO|TIPCONTACTO)$",
+  diagnosis = "^(D|DIAG|DX|DIAG_|DX_)([0-9]{1,2})$",
+  poa = "^(POAD|POA|POA_|POAD_)([0-9]{1,2})$",
+  procedure = "^(PROC|PROC_|P|PR|PROCED|PROCEDIMIENTO)([0-9]{1,2})$",
+  external_procedure = "^(PROCEXT|PROCEXT_|PROC_EXT)([0-9]{1,2})$"
+)
+
+cmbd_find_col <- function(nms, pattern) {
+  hit <- nms[grepl(pattern, toupper(nms))]
+  if (length(hit) == 0) NA_character_ else hit[[1]]
+}
+
+# Columns of a numbered family, ordered by their number.
+cmbd_find_family <- function(nms, pattern) {
+  hit <- nms[grepl(pattern, toupper(nms))]
+  if (length(hit) == 0) return(character())
+  idx <- as.integer(sub(pattern, "\\2", toupper(hit)))
+  hit[order(idx)]
+}
+
+# Dates in the CMBD exchange layouts: ddmmyyyy, "ddmmyyyy hhmm", ddmmyy
+# (CMBD-H before 2016), dd/mm/yyyy, ISO yyyy-mm-dd or yyyymmdd; Date and
+# POSIXct pass through.
+cmbd_parse_date <- function(x) {
+  if (inherits(x, "Date")) return(x)
+  if (inherits(x, "POSIXt")) return(as.Date(x))
+  s <- trimws(as.character(x))
+  s[is.na(s) | s == ""] <- NA_character_
+  out <- rep(as.Date(NA), length(s))
+  iso <- !is.na(s) & grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}", s)
+  out[iso] <- as.Date(substr(s[iso], 1, 10))
+  slash <- !is.na(s) & grepl("^[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}", s)
+  out[slash] <- as.Date(sub("^([0-9]{1,2}/[0-9]{1,2}/[0-9]{4}).*$", "\\1", s[slash]), format = "%d/%m/%Y")
+  eight <- !is.na(s) & grepl("^[0-9]{8}", s) & !iso
+  if (any(eight)) {
+    d8 <- substr(s[eight], 1, 8)
+    year_first <- as.integer(substr(d8, 1, 4)) %in% 1850:2100 & as.integer(substr(d8, 5, 6)) %in% 1:12
+    parsed <- as.Date(d8, format = "%d%m%Y")
+    parsed[year_first] <- as.Date(d8[year_first], format = "%Y%m%d")
+    out[eight] <- parsed
+  }
+  six <- !is.na(s) & grepl("^[0-9]{6}$", s)
+  if (any(six)) {
+    yy <- as.integer(substr(s[six], 5, 6))
+    century <- ifelse(yy <= as.integer(format(Sys.Date(), "%y")), 2000L, 1900L)
+    out[six] <- as.Date(paste0(substr(s[six], 1, 4), century + yy), format = "%d%m%Y")
+  }
+  out
+}
+
+# Whole years between two dates (age at the start of the contact).
+cmbd_age_years <- function(birth, at) {
+  y <- as.integer(format(at, "%Y")) - as.integer(format(birth, "%Y"))
+  before_birthday <- format(at, "%m%d") < format(birth, "%m%d")
+  out <- y - as.integer(before_birthday)
+  out[is.na(birth) | is.na(at)] <- NA_integer_
+  out
+}
+
+cmbd_sex <- function(x) {
+  key <- toupper(trimws(as.character(x)))
+  dplyr::case_when(
+    key %in% c("1", "V", "H") ~ 1L,   # varón / hombre
+    key %in% c("2", "M") ~ 2L,        # mujer
+    TRUE ~ 0L                         # 3 indeterminado, 9 no especificado, blank
+  )
+}
+
+# "Destino tras el contacto" (TIPALT) -> UB-04 patient discharge status. Only
+# death, leaving against medical advice and transfers change the DRG; the
+# other destinations are mapped to the closest UB-04 value and 9 (unknown) is
+# left missing so that the grouper reports it only where the DRG depends on it.
+cmbd_discharge_status <- function(x) {
+  key <- trimws(as.character(x))
+  dplyr::case_when(
+    key == "1" ~ "01",   # domicilio
+    key == "2" ~ "02",   # traslado a otro hospital
+    key == "3" ~ "07",   # alta voluntaria
+    key == "4" ~ "20",   # exitus
+    key == "5" ~ "03",   # traslado a centro sociosanitario
+    key == "6" ~ "06",   # hospitalización a domicilio (regional layouts)
+    key == "7" ~ "07",   # fuga (regional layouts)
+    key == "8" ~ "01",   # otros
+    TRUE ~ NA_character_ # 9 desconocido, blank
+  )
+}
+
+cmbd_poa <- function(x) {
+  key <- toupper(trimws(as.character(x)))
+  dplyr::case_when(
+    key == "S" ~ "Y",
+    key == "N" ~ "N",
+    key == "D" ~ "U",   # desconocido
+    key == "I" ~ "W",   # clínicamente indeterminado
+    key == "E" ~ "1",   # exento
+    key %in% c("Y", "U", "W", "1", "0") ~ key,
+    TRUE ~ NA_character_
+  )
+}
+
+#' Convert Spanish CMBD / RAE-CMBD discharge records to MS-DRG input tables
+#'
+#' The Spanish hospital discharge register (CMBD until 2015, RAE-CMBD since
+#' 2016, Real Decreto 69/2015) codes diagnoses and procedures in CIE-10-ES,
+#' the Spanish translation of ICD-10-CM and ICD-10-PCS. This function takes a
+#' data frame in the register's wide layout (one row per contact, numbered
+#' diagnosis, present-on-admission and procedure columns) and returns the
+#' three long tables that [msdrg_group()] expects, mapping the Spanish code
+#' lists to the CMS conventions:
+#'
+#' * `SEXO` 1 / 2 / 3 / 9 (or `V`/`H` / `M`) to 1 male, 2 female, 0 unknown;
+#' * `TIPALT` (destination after the contact) to the UB-04 discharge status:
+#'   1 domicilio to `01`, 2 traslado a otro hospital to `02`, 3 alta
+#'   voluntaria to `07`, 4 exitus to `20`, 5 centro sociosanitario to `03`,
+#'   8 otros to `01`; 9 desconocido is left missing (the grouper only reports
+#'   it when the DRG depends on the discharge status);
+#' * `POAD1`.. `S` / `N` / `D` / `I` / `E` to `Y` / `N` / `U` / `W` / `1`;
+#' * age from `EDAD` when present, otherwise whole years between `FECNAC` and
+#'   the start of the contact (`FECINICONT`, or the admission date column).
+#'
+#' Column names are matched case-insensitively against the exchange-file
+#' names of RD 69/2015 (`D1`..`D20`, `POAD1`..`POAD20`, `PROC1`..`PROC20`,
+#' `PROCEXT1`..`PROCEXT6`, `FECNAC`, `SEXO`, `TIPALT`, `TIPCONT`, ...) and
+#' common variants (`DIAG_01`, `POA_01`, `PROC_01`, `TIPALTA`, `FECINGRESO`,
+#' `EDAD`, ...). Codes may carry dots or not.
+#'
+#' Rows are not filtered: DRGs are meaningful for hospitalisation contacts, so
+#' filter on `TIPCONT` (1 = hospitalización) before or after conversion; the
+#' contact type is carried through as `contact_type` in `claims`.
+#'
+#' @param x Data frame in the CMBD / RAE-CMBD layout.
+#' @param id Name of a column holding a unique contact identifier, or `NULL`
+#'   to use the row number.
+#' @param include_external Whether to include procedures performed at other
+#'   centres (`PROCEXT1`..`PROCEXT6`) after the centre's own procedures.
+#' @return A list with `claims`, `diagnoses` and `procedures`, ready for
+#'   `group(grouper("msdrg"), <list>)` or `msdrg_group(<list>)`. `claims`
+#'   also carries `contact_type` and `cmbd_discharge` (the original `TIPALT`
+#'   value) for filtering and inspection.
+#' @export
+#' @examples
+#' rae <- data.frame(
+#'   FECNAC = "15031957", SEXO = "1", FECINICONT = "02052024 1130", TIPCONT = "1",
+#'   TIPALT = "1", D1 = "I21.4", D2 = "E11.9", D3 = "N17.9",
+#'   POAD1 = "S", POAD2 = "S", POAD3 = "N", PROC1 = "02703ZZ"
+#' )
+#' inp <- cmbd_to_msdrg(rae)
+#' inp$claims
+#' group(grouper("msdrg", version = "44.0"), inp)[c("claim_id", "drg", "severity")]
+cmbd_to_msdrg <- function(x, id = NULL, include_external = FALSE) {
+  x <- tibble::as_tibble(x)
+  nms <- names(x)
+  col <- function(key) cmbd_find_col(nms, cmbd_aliases[[key]])
+  fam <- function(key) cmbd_find_family(nms, cmbd_aliases[[key]])
+
+  if (!is.null(id)) {
+    if (!id %in% nms) cli::cli_abort("Column {.field {id}} not found in {.arg x}.")
+    claim_id <- x[[id]]
+    if (vctrs::vec_duplicate_any(claim_id)) cli::cli_abort("{.field {id}} must identify each row uniquely.")
+  } else {
+    claim_id <- seq_len(nrow(x))
+  }
+
+  dx_cols <- fam("diagnosis")
+  if (length(dx_cols) == 0) {
+    cli::cli_abort("No diagnosis columns found (expected {.field D1}..{.field D20}, {.field DIAG_01}.. or similar).")
+  }
+  poa_cols <- fam("poa")
+  pr_cols <- fam("procedure")
+  ext_cols <- if (include_external) fam("external_procedure") else character()
+
+  sex_col <- col("sex")
+  age_col <- col("age")
+  birth_col <- col("birth_date")
+  start_col <- col("start_date")
+  discharge_col <- col("discharge")
+  contact_col <- col("contact_type")
+  if (is.na(sex_col)) cli::cli_abort("No sex column found (expected {.field SEXO}).")
+  if (is.na(discharge_col)) cli::cli_abort("No discharge column found (expected {.field TIPALT}).")
+  if (is.na(age_col) && (is.na(birth_col) || is.na(start_col))) {
+    cli::cli_abort("Age needs {.field EDAD}, or {.field FECNAC} and the contact start date ({.field FECINICONT}).")
+  }
+
+  age <- if (!is.na(age_col)) {
+    suppressWarnings(as.integer(x[[age_col]]))
+  } else {
+    cmbd_age_years(cmbd_parse_date(x[[birth_col]]), cmbd_parse_date(x[[start_col]]))
+  }
+
+  claims <- tibble::tibble(
+    claim_id = claim_id,
+    age = age,
+    sex = cmbd_sex(x[[sex_col]]),
+    discharge_status = cmbd_discharge_status(x[[discharge_col]]),
+    contact_type = if (is.na(contact_col)) NA_character_ else trimws(as.character(x[[contact_col]])),
+    cmbd_discharge = trimws(as.character(x[[discharge_col]]))
+  )
+
+  long <- function(cols, value_name) {
+    if (length(cols) == 0) {
+      return(tibble::tibble(claim_id = claim_id[0], seq = integer(), !!value_name := character()))
+    }
+    m <- as.matrix(dplyr::mutate(x[cols], dplyr::across(dplyr::everything(), as.character)))
+    tibble::tibble(
+      claim_id = rep(claim_id, times = length(cols)),
+      seq = rep(seq_along(cols), each = nrow(x)),
+      !!value_name := as.vector(m)
+    )
+  }
+
+  diagnoses <- long(dx_cols, "code") |>
+    dplyr::mutate(code = msdrg_normalize_code(.data$code))
+  if (length(poa_cols) > 0) {
+    poa <- long(poa_cols, "poa") |> dplyr::mutate(poa = cmbd_poa(.data$poa))
+    diagnoses <- dplyr::left_join(diagnoses, poa, by = c("claim_id", "seq"))
+  } else {
+    diagnoses$poa <- NA_character_
+  }
+  diagnoses <- diagnoses |>
+    dplyr::filter(!is.na(.data$code)) |>
+    dplyr::arrange(.data$claim_id, .data$seq)
+
+  procedures <- long(pr_cols, "code")
+  if (length(ext_cols) > 0) {
+    ext <- long(ext_cols, "code") |> dplyr::mutate(seq = .data$seq + length(pr_cols))
+    procedures <- dplyr::bind_rows(procedures, ext)
+  }
+  procedures <- procedures |>
+    dplyr::mutate(code = msdrg_normalize_code(.data$code)) |>
+    dplyr::filter(!is.na(.data$code)) |>
+    dplyr::arrange(.data$claim_id, .data$seq) |>
+    dplyr::group_by(.data$claim_id) |>
+    dplyr::mutate(seq = dplyr::row_number()) |>
+    dplyr::ungroup()
+
+  list(claims = claims, diagnoses = diagnoses, procedures = procedures)
+}
