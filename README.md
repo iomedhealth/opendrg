@@ -56,6 +56,19 @@ application that reads encrypted data files. That makes grouping awkward to
 embed in an analytical pipeline, impossible to run inside a database or on a
 Mac/Linux server, and hard to inspect when a result looks wrong.
 
+They also all work the same way: you export the raw patient records to a file,
+feed the file to the program, and read the groups back. That is incompatible
+with how modern health-data infrastructures are run. In federated research
+networks built on the [OMOP Common Data Model](https://ohdsi.github.io/CommonDataModel/)
+(OHDSI, DARWIN EU, EHDEN, …) the patient-level data never leaves the hospital's
+database: the analysis code travels to the data, runs there, and only
+aggregate results come back. A grouper that needs the raw data on a Windows
+desktop cannot take part in that; a grouper expressed as tables and dplyr
+logic can travel with the study code, run at each site against its
+`condition_occurrence` and `procedure_occurrence` tables (in R today, pushed
+down into the database through dbplyr as the next step), and still give the
+official answer.
+
 The key observation behind opendrg is that both agencies already **publish the
 complete grouping logic as data**: CMS as flat files with one formula per DRG,
 NHS England as Excel workbooks listing every rule and code list. opendrg
