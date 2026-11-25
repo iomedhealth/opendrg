@@ -69,11 +69,11 @@
     $^*$ \textbf{Contact}: info@iomed.health
 }
 
-\Keywords{Casemix --- Diagnosis Related Groups (MS-DRG) --- Healthcare Resource Groups (HRG4+) --- Prescribed Specialised Services --- Hospital Reimbursement --- Open-Source Software --- R --- Reproducible Verification}
+\Keywords{Casemix --- Diagnosis Related Groups (MS-DRG) --- Healthcare Resource Groups (HRG4+) --- Prescribed Specialised Services --- OMOP CDM --- CDMConnector --- Open-Source Software --- R --- Reproducible Verification}
 \newcommand{\keywordname}{Keywords}
 
 \Abstract{
-Casemix groupers translate the coded content of a hospital stay---diagnoses, procedures, demographics and discharge disposition---into the payment and costing categories that underpin inpatient reimbursement, benchmarking and health-services research: Medicare Severity Diagnosis Related Groups (MS-DRGs) in the United States, and Healthcare Resource Groups (HRG4+) and Prescribed Specialised Services (PSS) flags in England. The reference implementations are distributed as platform-bound executables (a Windows installer, a z/OS mainframe module, a Java library), which makes grouping hard to embed in modern analytical pipelines, impossible to run inside a database, and opaque to the analysts who depend on its output. This whitepaper describes \textbf{opendrg}, an open-source R package that re-implements all three as \emph{published logic tables plus a small evaluation engine}. We show that the complete MS-DRG decision logic is contained in nine flat files released by CMS with every version---one boolean formula per DRG, code-to-attribute patterns, a complication/comorbidity exclusion list and procedure clusters---and that the HRG4+ and PSS logic is likewise contained, in machine-readable form, in NHS England's \emph{Code to Group} and \emph{Guide to Identification Rules} workbooks, supplemented by a handful of flowcharts and hierarchies that only appear in the accompanying PDFs. The MS-DRG engine compiles the 794 CMS formulas into \texttt{dplyr} expressions and evaluates them in CMS's order, reproducing per-row severity suppression, CC/MCC exclusions, cluster-based attribute suppression and the hospital-acquired-condition (HAC) second pass. Verification against CMS's own Java grouper---run on its 9{,}864-claim test database---shows \textbf{100\% agreement on final DRG, initial DRG, MDC, medical/surgical class, severity level and return code for all three bundled versions (v43.0, v43.1 and v44.0)}. The HRG4+ engine evaluates the workbook's ordered (root, flag) candidates and formal condition flags with last-satisfied-wins semantics, forms combination codes, derives unbundled HRGs, and groups spells from a pseudo-record of the dominant episode; it reproduces \textbf{every record of NHS England's official expected results for all seven HRG4+ datasets} (2{,}250 records, including 750 episodes and 477 spells of admitted patient care) for the 2024/25 National Costs and 2025/26 Local Payment designs, and the PSS engine reproduces \textbf{every record of the official PSO 2025/26 sample data} (300 episodes, 141 spells, 200 attendances). The package passes \texttt{R CMD check} without notes on five continuous-integration platforms.
+Casemix groupers translate the coded content of a hospital stay---diagnoses, procedures, demographics and discharge disposition---into the payment and costing categories that underpin inpatient reimbursement, benchmarking and health-services research: Medicare Severity Diagnosis Related Groups (MS-DRGs) in the United States, and Healthcare Resource Groups (HRG4+) and Prescribed Specialised Services (PSS) flags in England. The reference implementations are distributed as platform-bound executables (a Windows installer, a z/OS mainframe module, a Java library), which makes grouping hard to embed in modern analytical pipelines, impossible to run inside a database, and opaque to the analysts who depend on its output. This whitepaper describes \textbf{opendrg}, an open-source R package that re-implements all three as \emph{published logic tables plus a small evaluation engine}. We show that the complete MS-DRG decision logic is contained in nine flat files released by CMS with every version---one boolean formula per DRG, code-to-attribute patterns, a complication/comorbidity exclusion list and procedure clusters---and that the HRG4+ and PSS logic is likewise contained, in machine-readable form, in NHS England's \emph{Code to Group} and \emph{Guide to Identification Rules} workbooks, supplemented by a handful of flowcharts and hierarchies that only appear in the accompanying PDFs. The MS-DRG engine compiles the 794 CMS formulas into \texttt{dplyr} expressions and evaluates them in CMS's order, reproducing per-row severity suppression, CC/MCC exclusions, cluster-based attribute suppression and the hospital-acquired-condition (HAC) second pass. Verification against CMS's own Java grouper---run on its 9{,}864-claim test database---shows \textbf{100\% agreement on final DRG, initial DRG, MDC, medical/surgical class, severity level and return code for all three bundled versions (v43.0, v43.1 and v44.0)}. The HRG4+ engine evaluates the workbook's ordered (root, flag) candidates and formal condition flags with last-satisfied-wins semantics, forms combination codes, derives unbundled HRGs, and groups spells from a pseudo-record of the dominant episode; it reproduces \textbf{every record of NHS England's official expected results for all seven HRG4+ datasets} (2{,}250 records, including 750 episodes and 477 spells of admitted patient care) for the 2024/25 National Costs and 2025/26 Local Payment designs, and the PSS engine reproduces \textbf{every record of the official PSO 2025/26 sample data} (300 episodes, 141 spells, 200 attendances). Finally, we integrate MS-DRG grouping directly with the OMOP Common Data Model through \texttt{CDMConnector} (\texttt{omop\_to\_msdrg()}, \texttt{omop\_msdrg()}), executing read-only \texttt{dbplyr} queries with explicit principal-diagnosis strategies and automated data-quality reporting, and demonstrate it end-to-end on a live production hospital CDM (5{,}126 inpatient stays in 2024). The package passes \texttt{R CMD check} without notes on five continuous-integration platforms.
 }
 
 %----------------------------------------------------------------------------------------
@@ -111,7 +111,7 @@ The software that performs the assignment, however, has remained a black box bou
     \item \textbf{Verification against the reference implementation, not against documentation.} CMS's own Java grouper is run on CMS's own test database to produce the oracle; the package test-suite asserts byte-for-byte agreement (Section~\ref{sec:verification}).
 \end{enumerate}
 
-The headline results are summarised in Table~\ref{tab:headline}. Sections~\ref{sec:hrg} and~\ref{sec:pso} describe the HRG4+ and Prescribed Specialised Services implementations, which follow the same pattern.
+The headline results are summarised in Table~\ref{tab:headline}. Sections~\ref{sec:hrg} and~\ref{sec:pso} describe the HRG4+ and Prescribed Specialised Services implementations, which follow the same pattern, and Section~\ref{sec:omop} describes the OMOP CDM / \texttt{CDMConnector} adapter and its validation on a live production hospital database.
 
 \begin{table*}[!t]\centering
 \caption{Headline status of the groupers implemented in \textbf{opendrg} (November 2026).}
@@ -300,7 +300,7 @@ Two observations are worth recording. First, the agreement for v43.0 and v43.1 w
 
 \subsection{Engineering assurance}
 
-The package carries 910 automated assertions across the three groupers (formula round-tripping for every bundled MS-DRG formula, full TESTDB agreement, the HAC and POA-status paths, input validation, and the NHS England expected-result comparisons of Sections~\ref{sec:hrg} and~\ref{sec:pso}) and passes \texttt{R CMD check --as-cran} with no errors, warnings or notes on macOS, Windows and three Ubuntu/R configurations through GitHub Actions. The oracle harness, the extracted engine specification and the table importers are versioned with the package so that any future CMS release can be imported, dumped, and re-verified in minutes. Throughput is approximately 1{,}200 claims per second in single-threaded R on an Apple-silicon laptop; the remaining per-claim loops (greedy trauma/bilateral counting) are small and amenable to vectorisation.
+The package carries 1{,}045 automated assertions across the three groupers and input adapters (formula round-tripping for every bundled MS-DRG formula, full TESTDB agreement, the HAC and POA-status paths, input validation, the Spanish RAE-CMBD and OMOP CDM/\texttt{CDMConnector} adapters including DuckDB SQL translation, and the NHS England expected-result comparisons of Sections~\ref{sec:hrg} and~\ref{sec:pso}) and passes \texttt{R CMD check --as-cran} with no errors, warnings or notes on macOS, Windows and three Ubuntu/R configurations through GitHub Actions. The oracle harness, the extracted engine specification and the table importers are versioned with the package so that any future CMS release can be imported, dumped, and re-verified in minutes. Throughput is approximately 1{,}200 claims per second in single-threaded R on an Apple-silicon laptop; the remaining per-claim loops (greedy trauma/bilateral counting) are small and amenable to vectorisation.
 
 \section{HRG4+: Same Pattern, Published Tables}
 \label{sec:hrg}
@@ -363,6 +363,78 @@ The PSO tool's \emph{Guide to Identification Rules} workbook~\cite{nhse2026pso} 
 
 Two details illustrate why verification against official outputs, rather than against documentation, remains essential even for a table-driven design. First, the workbook contains \emph{two} enumerations of the lists, and they disagree: the \texttt{List Members} sheet is a stale 2024/25 export (missing two procedure lists and the year's provider-eligibility changes), while \texttt{Code Sets} is current; only the latter reproduces the published Summary of Changes. Second, the generic provider code \texttt{PSS}, which the User Manual states is on every eligibility list, is absent from the workbook and has to be added by the importer. On NHS England's sample data the engine reproduces every output of the tool: for all 300 episodes the list of qualifying service lines, the dominant service line and NPoC, the spell-level service line and NPoC, and the 30 validation messages; the 44 spell rows; and for all 200 outpatient attendances the service line, NPoC and 20 validation messages. The \emph{Version 2} rules published in May 2026 were imported with the same call; the table-level difference between the two versions is exactly the published change list (one new outpatient service line, one procedure added, four provider changes), and the package tests assert it.
 
+\section{Grouping Directly on OMOP CDM via \texttt{CDMConnector}}
+\label{sec:omop}
+
+In federated health-data networks built on the OMOP Common Data Model~\cite{ohdsi2024omop} (OHDSI, DARWIN~EU, EHDEN), patient-level records stay inside each hospital's database: analytical code travels to the data, connects through a \texttt{CDMConnector}~\cite{black2025cdmconnector} \texttt{cdm\_reference} object, and returns only aggregate outputs. Vendor groupers that require exporting raw claims to a Windows desktop or JVM are incompatible with this model. \textbf{opendrg} therefore provides \texttt{omop\_to\_msdrg()} and \texttt{omop\_msdrg()}---also reachable directly via \texttt{group(grouper("msdrg"), cdm, ...)}---to compute MS-DRGs straight from a \texttt{CDMConnector} object.
+
+\subsection{Architecture and explicit mapping assumptions}
+
+{\sloppy All extraction, filtering and vocabulary joins run lazily inside the database via \texttt{dplyr}/\texttt{dbplyr} without requiring a write schema or temporary tables, so the functions work on strictly read-only connections (PostgreSQL, DuckDB, SQLite or in-memory \texttt{omopgenerics} tables). Only the scoped inpatient stays (\texttt{visit\_\allowbreak concept\_id} $\in \{9201, 262\}$), their demographics, diagnoses, procedures and in-stay deaths are collected into R for grouping. Column names are detected automatically across OMOP CDM v5.3 (\texttt{discharge\_\allowbreak to\_*}) and v5.4 (\texttt{discharged\_\allowbreak to\_*}), 64-bit hash identifiers (\texttt{bit64::\allowbreak integer64}) are preserved losslessly as canonical character claim keys, and capped extracts (\texttt{n\_max}) use deterministic SQL window ordering (\texttt{slice\_min()}) so stay, diagnosis and procedure subqueries always reference the identical visit set.\par}
+
+{\sloppy Real-world hospital ETLs frequently omit fields that billing groupers assume. Rather than applying silent heuristics, \texttt{omop\_to\_msdrg()} makes every assumption configurable and records its effect in an attached quality report (\texttt{omop\_\allowbreak msdrg\_\allowbreak quality()}):\par}
+
+{\sloppy
+\begin{enumerate}[leftmargin=*,nosep]
+    \item \textbf{Diagnosis codes and validity.} Diagnoses are read from \texttt{condition\_\allowbreak source\_\allowbreak concept\_id} in the \texttt{ICD10CM} vocabulary; free-text NLP rows (\texttt{condition\_\allowbreak type\_\allowbreak concept\_id = 32858}) are excluded by default (\texttt{exclude\_nlp = TRUE}) while preserving \texttt{NULL} types. An optional \texttt{snomed\_\allowbreak fallback = TRUE} path reverse-maps standard SNOMED concepts via \texttt{concept\_\allowbreak relationship} (\texttt{"Maps to"}) for extracts lacking source concepts. Every extracted code is checked against the grouper's \texttt{dx\_codes} table so non-billable category-level headers (e.g.\ \texttt{N18}, \texttt{G20}) are reported separately from genuinely unrecognised codes.
+    \item \textbf{Principal diagnosis (\texttt{principal}).} Four explicit strategies are supported: \texttt{"status"} (default) uses OMOP primary flags (\texttt{condition\_\allowbreak status\_\allowbreak concept\_id} $\in \{32902, 32903, 32901\}$ or legacy primary \texttt{condition\_\allowbreak type\_\allowbreak concept\_id}) and leaves stays without a flag unassigned (DRG~999, return code~7); \texttt{"codelist"} selects the principal diagnosis from a study-supplied vector of ICD-10-CM codes or prefixes (\texttt{principal\_codes}), preferring valid billable codes over headers; \texttt{"all"} evaluates every coded diagnosis on a stay in turn as a multi-candidate sensitivity analysis; and \texttt{"first"} is an explicit opt-in first-code heuristic.
+    \item \textbf{Procedures.} \texttt{ICD10PCS} codes are taken from both \texttt{procedure\_\allowbreak concept\_id} (standard) and \texttt{procedure\_\allowbreak source\_\allowbreak concept\_id} (source). Any stay carrying unmapped or non-PCS procedure rows is flagged (\texttt{has\_\allowbreak unmapped\_pr}) and summarised so missing surgical DRGs are immediately visible.
+    \item \textbf{Discharge disposition and POA.} UB-04 discharge status is resolved in four tiers: (i) in-stay mortality in the OMOP \texttt{death} table (\texttt{"20"}), (ii) an optional per-site \texttt{discharge\_map} over \texttt{discharged\_\allowbreak to\_\allowbreak source\_value}, (iii) standard OMOP \texttt{discharged\_\allowbreak to\_\allowbreak concept\_id} (including direct \texttt{UB04 Pt dis status} concepts), and (iv) \texttt{default\_\allowbreak discharge = "01"} (routine discharge home). Because standard OMOP tables do not carry CMS present-on-admission flags, \texttt{omop\_msdrg()} defaults to \texttt{poa\_exempt = "exempt"}.
+\end{enumerate}
+\par}
+
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=R]
+library(CDMConnector)
+library(opendrg)
+
+cdm <- cdmFromCon(con, cdmSchema = "cdm", cdmName = "site")
+g   <- grouper("msdrg", version = "44.0")
+
+# Cohort/indication grouping with a site discharge map:
+res <- group(
+  g, cdm,
+  start_date = "2024-01-01", end_date = "2024-12-31",
+  principal = "codelist",
+  principal_codes = c("C61","C67","C64","N40","N20","N17","N18","N390","N13"),
+  unmatched = "drop",
+  discharge_map = c("1"="01","2"="02","3"="07","5"="20","4"="03","6"="06")
+)
+omop_msdrg_quality(res)
+\end{lstlisting}
+\end{minipage}
+
+\subsection{Live hospital OMOP CDM evaluation}
+
+{\sloppy We tested \texttt{omop\_msdrg()} and \texttt{group()} read-only against a production OMOP CDM v5.4 PostgreSQL instance of a Spanish specialist urology--nephrology hospital (222{,}360 historical inpatient stays; 5{,}126 stays across 3{,}791 patients in calendar year 2024; reproducible site-agnostic script in \texttt{dev/omop-cdm-example.R}; aggregates only). Table~\ref{tab:omop} summarises three runs on the 2024 inpatient stays using MS-DRG v44.0.\par}
+
+\begin{table*}[!t]\centering
+\caption{End-to-end MS-DRG v44.0 runs via \texttt{CDMConnector} on a live production OMOP CDM v5.4 (Spanish urology--nephrology hospital, 2024 inpatient stays; read-only, aggregates only).}
+\label{tab:omop}
+\scriptsize
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{@{}p{4.6cm}rrrccp{4.2cm}@{}}
+\toprule
+Strategy & Stays & Claims & Grouped (RC~0) & Surgical & Time & Key finding \\
+\midrule
+\texttt{status} (readiness audit) & 5{,}126 & 5{,}126 & 0 (0.0\%) & --- & 13.2\,s & 0\% OMOP primary flags; 95.8\% ICD-10-CM coded; 84.3\% unmapped procedures \\
+\texttt{codelist} (9 urology/nephrology prefixes) & 5{,}126 & 2{,}785 & 2{,}782 (99.9\%) & 2.7\% & 10.5\,s & Clinically coherent top DRGs; median LOS NCC 2\,d, CC 4\,d, MCC 5\,d \\
+\texttt{all} (sensitivity, \texttt{n\_max = 1000}) & 1{,}000 & 4{,}913 & 4{,}781 (97.3\%) & 1.5\% & 12.2\,s & 954/1{,}000 groupable; only 9.6\% DRG-invariant (12.2\% same MDC) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The live test surfaced four operational findings that validate the adapter's design:
+
+{\sloppy
+\begin{itemize}[leftmargin=*,nosep]
+    \item \textbf{Readiness profile.} Of the 5{,}126 inpatient stays in 2024, 95.8\% carry ICD-10-CM source diagnoses (median~4, mean~5.0 codes per stay; 24{,}257 valid billable rows and 174 non-billable category-level header rows led by \texttt{G20}, \texttt{I42.0} and \texttt{G35}). Discharge disposition resolved via the site map on 4{,}168 stays (where local code \texttt{5} denotes exitus, differing from the national CMBD code~\texttt{4}), the \texttt{death} table on 13 stays, and the default on 945 blank stays.
+    \item \textbf{Absent primary flag and sensitivity.} Because \texttt{condition\_\allowbreak status\_\allowbreak concept\_id} is unpopulated (0.0\%), \texttt{principal = "status"} refuses to fabricate DRGs. Expanding every coded diagnosis in turn (\texttt{principal = "all"}, 1{,}000 stays, 4{,}913 candidate claims) shows that only \textbf{9.6\% of stays receive the same DRG regardless of which diagnosis is principal} (10.1\% same base DRG, 12.2\% same MDC)---demonstrating quantitatively why no silent heuristic should guess the principal diagnosis.
+    \item \textbf{Clinical coherence under \texttt{principal = "codelist"}.} Specifying nine specialist urology/nephrology prefixes (\texttt{C61}, \texttt{C67}, \texttt{C64}, \texttt{N40}, \texttt{N20}, \texttt{N17}, \texttt{N18}, \texttt{N390}, \texttt{N13}) matched 2{,}785 stays (54.3\% of the year's admissions) and grouped 2{,}782 with return code~0 (99.9\%) in 10.5 seconds; the only three failures were category-level headers (\texttt{N18}, \texttt{N20}) on stays with no finer code. The top assigned groups match the hospital's clinical casemix: renal failure (DRGs 683/684/682: 1{,}066 stays), benign prostatic hypertrophy (DRG~726: 468), urinary stones (DRG~694: 366), urinary tract infections (DRG~690: 248), kidney and urinary tract neoplasms (DRGs 688/687: 271), male reproductive malignancy (DRG~724: 146) and major male pelvic procedures (DRG~708: 54). Length of stay increases monotonically across MS-DRG severity tiers: without CC/MCC (\texttt{NCC}, $n=1{,}600$) median 2 days (mean 3.1), with \texttt{CC} ($n=1{,}056$) median 4 days (mean 5.5), and with \texttt{MCC} ($n=126$) median 5 days (mean 8.1).
+    \item \textbf{Unmapped procedures.} While 84.3\% of stays carry procedure rows in \texttt{procedure\_\allowbreak occurrence}, only 6.1\% carry mapped ICD-10-PCS concepts, limiting surgical DRG reachability to 2.7\%. Surfacing this gap automatically in \texttt{omop\_\allowbreak msdrg\_\allowbreak quality()} gives data-engineering teams a concrete, prioritised ETL checklist (populate \texttt{condition\_\allowbreak status\_\allowbreak concept\_id} 32902/32908, map local procedures to ICD-10-PCS, and keep billable ICD-10-CM source codes).
+\end{itemize}
+\par}
+
 \section{Portability, Licensing and Reproducibility}
 
 \textbf{Portability.} \textbf{opendrg} depends only on R ($\geq$ 4.1) and the tidyverse core (\texttt{dplyr}~\cite{dplyr2023}, \texttt{tidyr}, \texttt{purrr}, \texttt{rlang}, \texttt{vctrs}); there is no Java, .NET or native dependency. Each grouper version is a self-contained table set of a few hundred kilobytes, and versions can coexist in one session (\texttt{grouper("msdrg", "43.1")}). Because formulas are compiled to \texttt{dplyr} expressions and MDC evaluation is a \texttt{case\_when()}, the path to in-database grouping through \texttt{dbplyr} is a matter of porting the marking joins and a handful of counters, not of redesign.
@@ -375,7 +447,7 @@ Two details illustrate why verification against official outputs, rather than ag
 
 \section{Conclusion}
 
-Hospital casemix grouping is deterministic, consequential and---as this work demonstrates---fully specified by data that the responsible agencies already publish. By treating that data as the single source of truth and verifying an open engine against the reference implementations rather than against prose, \textbf{opendrg} delivers MS-DRG grouping that is provably identical to CMS's software on CMS's own test database for three consecutive versions, HRG4+ grouping for all seven datasets and Prescribed Specialised Services flags that are identical to NHS England's tools on their official test data, runs anywhere R runs, and can be inspected, versioned and tested like any other analytical code. For English costing and research teams it is the first grouper they can run outside a Windows desktop; for both countries it turns a black box into a versioned table set with a public verification record.
+Hospital casemix grouping is deterministic, consequential and---as this work demonstrates---fully specified by data that the responsible agencies already publish. By treating that data as the single source of truth and verifying an open engine against the reference implementations rather than against prose, \textbf{opendrg} delivers MS-DRG grouping that is provably identical to CMS's software on CMS's own test database for three consecutive versions, HRG4+ grouping for all seven datasets and Prescribed Specialised Services flags that are identical to NHS England's tools on their official test data, runs anywhere R runs, and can be inspected, versioned and tested like any other analytical code. For English costing and research teams it is the first grouper they can run outside a Windows desktop; for federated OMOP CDM networks it brings verified MS-DRG grouping directly to the hospital's database through \texttt{CDMConnector} with explicit, auditable data-quality reporting; and for every health system it turns a black box into a versioned table set with a public verification record.
 
 %----------------------------------------------------------------------------------------
 %	REFERENCE LIST

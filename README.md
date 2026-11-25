@@ -84,10 +84,18 @@ imported with one function call.
 | NHS England **HRG4+** | 2024/25 National Costs, 2025/26 Local Payment | Every record of NHS England's official test data gives the published expected result, for all seven datasets: inpatient episodes and spells, outpatients, emergency medicine, adult / paediatric / neonatal critical care, renal (2,250 records) |
 | NHS England **Prescribed Specialised Services** | 2025/26, 2025/26 Version 2 | Every record of NHS England's official sample data gives the published service lines, dominant line and programme of care, for inpatients (300 episodes) and outpatients (200 attendances) |
 
-Also included: an adapter from the Spanish discharge register (CMBD /
-RAE-CMBD) to the MS-DRG input, a reader for its exchange files and a
-synthetic 1,000-contact extract to try them on (see
-[Spanish hospital data](#spanish-hospital-data-cmbd--rae-cmbd)).
+Also included:
+
+* An **OMOP CDM** adapter and grouper (`omop_to_msdrg()`, `omop_msdrg()`,
+  `omop_msdrg_quality()`) that accepts a `CDMConnector` `cdm_reference`
+  directly, executes lazy read-only `dbplyr` queries inside the site's
+  database, and groups inpatient stays with explicit principal-diagnosis
+  strategies and a data-quality report (see
+  [OMOP CDM (`CDMConnector`)](#omop-cdm-cdmconnector)).
+* An adapter from the Spanish discharge register (CMBD / RAE-CMBD) to the
+  MS-DRG input, a reader for its exchange files and a synthetic 1,000-contact
+  extract to try them on (see
+  [Spanish hospital data](#spanish-hospital-data-cmbd--rae-cmbd)).
 
 ## Installation
 
@@ -313,6 +321,82 @@ the code-year lag: CIE-10-ES 2024 corresponds to ICD-10-CM/PCS FY2023, and the
 synthetic file only uses codes that exist in both FY2023 and the bundled
 tables. The generator (`data-raw/cmbd-synthetic.R`) is seeded and documents
 every clinical profile, so the file can be regenerated or extended.
+
+### OMOP CDM (`CDMConnector`)
+
+In federated research networks built on the OMOP Common Data Model, data lives
+behind a `cdm_reference` created with `CDMConnector::cdmFromCon()` (PostgreSQL,
+DuckDB, SQL Server, …) or `omopgenerics::cdmFromTables()`. `omop_msdrg()` — or
+equivalently `group(grouper("msdrg"), cdm, ...)` — runs read-only lazy `dbplyr`
+queries inside the database (no write schema required), extracts the scoped
+inpatient stays, demographics, ICD-10-CM diagnoses, ICD-10-PCS procedures and
+discharge disposition, assigns MS-DRGs, and attaches a readiness report
+(`omop_msdrg_quality()`):
+
+```r
+library(CDMConnector)
+library(opendrg)
+
+cdm <- cdmFromCon(con, cdmSchema = "cdm", cdmName = "hospital_a")
+
+# Standard CDM with condition_status_concept_id (32902/32903) populated:
+res <- omop_msdrg(cdm, tables = "44.0", start_date = "2024-01-01", end_date = "2024-12-31")
+omop_msdrg_quality(res)
+
+# Or via the unified grouper interface, scoped to a CDM cohort table:
+g <- grouper("msdrg", version = "44.0")
+res <- group(g, cdm, cohort = "study_cohort")
+```
+
+Real-world OMOP ETLs frequently omit billing-specific fields, so `omop_to_msdrg()`
+and `omop_msdrg()` make every assumption explicit rather than guessing silently:
+
+* **Principal diagnosis (`principal`)**: `"status"` (default) uses OMOP
+  primary-diagnosis flags (`condition_status_concept_id` 32902/32903/32901 or
+  legacy primary `condition_type_concept_id`) and marks stays without a flag
+  ungroupable (return code 7) instead of picking one arbitrarily. When a site
+  does not populate primary flags, pass `principal = "codelist"` with
+  `principal_codes` (the study's index ICD-10-CM codes or prefixes),
+  `principal = "all"` to evaluate every coded diagnosis in turn as a
+  sensitivity analysis, or `principal = "first"` for an explicit first-code
+  approximation.
+* **Discharge disposition (`discharge_map`, `default_discharge`)**: resolved in
+  order from in-stay mortality in the `death` table (`"20"`), an optional
+  per-site `discharge_map` over `discharged_to_source_value`, standard OMOP
+  `discharged_to_concept_id` (supporting both CDM v5.4 `discharged_to_*` and
+  v5.3 `discharge_to_*` names, plus `UB04 Pt dis status` concepts directly),
+  and `default_discharge = "01"` (routine home).
+* **Diagnoses & procedures**: reads `ICD10CM` from `condition_source_concept_id`
+  (excluding NLP rows `32858` by default; optional `snomed_fallback = TRUE` via
+  `concept_relationship`), reads `ICD10PCS` from both `procedure_concept_id`
+  and `procedure_source_concept_id`, flags stays carrying unmapped local
+  procedures (`has_unmapped_pr`), and separates non-billable category-level
+  ICD-10-CM headers (e.g. `N18`, `G20`) from unrecognised codes in
+  `omop_msdrg_quality()`.
+
+```r
+# Real-world site without primary flags and with a site-specific discharge list:
+site_discharge <- c("1" = "01", "2" = "02", "3" = "07", "5" = "20", "4" = "03", "6" = "06")
+index_codes <- c("C61", "C67", "C64", "N40", "N20", "N17", "N18", "N390", "N13")
+
+res <- group(
+  grouper("msdrg", version = "44.0"), cdm,
+  start_date = "2024-01-01", end_date = "2024-12-31",
+  principal = "codelist", principal_codes = index_codes, unmatched = "drop",
+  discharge_map = site_discharge
+)
+omop_msdrg_quality(res)
+#> <opendrg OMOP quality report> CDM: hospital_a (principal = "codelist", MS-DRG v44.0)
+#> Stays: 5,126 (3,791 persons); Claims: 2,785
+#> Diagnoses: 95.8% of stays coded (median 4, mean 5.0); 0.0% OMOP primary flag; 54.3% principal assigned
+#> Procedures: 6.1% with ICD-10-PCS; 84.3% with unmapped procedures
+#> Grouped (RC 0): 2,782 / 2,785 claims (99.9%); surgical: 2.7%
+#> Diagnosis code validity: category_header=174, valid_billable=24,257
+#> Discharge sources: source_map=4,168, default=945, death=13
+```
+
+See `dev/omop-cdm-example.R` for a complete runnable script against a live
+PostgreSQL OMOP CDM.
 
 ## Glossary
 

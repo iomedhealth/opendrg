@@ -28,7 +28,7 @@
 #'   `return_code`, `drg_description`, `mdc_description` and `formula` (the
 #'   matched DRGLOGIC formula).
 #' @export
-msdrg_group <- function(claims, diagnoses, procedures = NULL, tables = msdrg_tables(),
+msdrg_group <- function(claims, diagnoses = NULL, procedures = NULL, tables = msdrg_tables(),
                         poa_exempt = c("unknown", "non_exempt", "exempt")) {
   tbls <- msdrg_tables(tables)
   poa_exempt <- rlang::arg_match(poa_exempt)

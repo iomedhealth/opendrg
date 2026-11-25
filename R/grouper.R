@@ -75,8 +75,10 @@ print.opendrg_grouper <- function(x, ...) {
 #' Assign casemix groups to claims
 #'
 #' @param grouper A grouper created with [grouper()].
-#' @param claims A data frame with one row per claim. See the system-specific
-#'   documentation (e.g. [msdrg_group()]) for the required columns.
+#' @param claims A data frame with one row per claim, a list returned by
+#'   [cmbd_to_msdrg()] or [omop_to_msdrg()], or (for MS-DRG) a `cdm_reference`
+#'   object from `CDMConnector`. See the system-specific documentation (e.g.
+#'   [msdrg_group()], [omop_msdrg()]) for details.
 #' @param diagnoses A data frame with one row per diagnosis code on a claim
 #'   (MS-DRG only; HRG4+ episodes carry their codes in `DIAG_nn`/`OPER_nn`
 #'   columns).
@@ -94,6 +96,9 @@ group <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...) {
 
 #' @export
 group.msdrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...) {
+  if (inherits(claims, "cdm_reference")) {
+    return(omop_msdrg(claims, tables = grouper$tables, ...))
+  }
   msdrg_group(claims, diagnoses, procedures, tables = grouper$tables, ...)
 }
 

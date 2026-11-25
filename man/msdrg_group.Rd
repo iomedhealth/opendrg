@@ -6,7 +6,7 @@
 \usage{
 msdrg_group(
   claims,
-  diagnoses,
+  diagnoses = NULL,
   procedures = NULL,
   tables = msdrg_tables(),
   poa_exempt = c("unknown", "non_exempt", "exempt")
