@@ -3,6 +3,7 @@
 \name{group}
 \alias{group}
 \alias{group.hrg_grouper}
+\alias{group.pso_grouper}
 \title{Assign casemix groups to claims}
 \usage{
 group(grouper, claims, diagnoses = NULL, procedures = NULL, ...)
@@ -14,6 +15,15 @@ group(grouper, claims, diagnoses = NULL, procedures = NULL, ...)
   procedures = NULL,
   ...,
   dataset = c("apc", "nac", "em", "acc", "pcc", "ncc", "nrd")
+)
+
+\method{group}{pso_grouper}(
+  grouper,
+  claims,
+  diagnoses = NULL,
+  procedures = NULL,
+  ...,
+  dataset = c("apc", "nac")
 )
 }
 \arguments{
@@ -31,14 +41,17 @@ columns).}
 
 \item{...}{Passed on to the system-specific method.}
 
-\item{dataset}{For HRG4+, which dataset the rows belong to: \code{"apc"}
-(admitted patient care, default), \code{"nac"} (outpatients), \code{"em"}
-(emergency medicine), \code{"acc"} (adult critical care), \code{"pcc"} (paediatric
-critical care), \code{"ncc"} (neonatal critical care) or \code{"nrd"} (renal).}
+\item{dataset}{For HRG4+ and PSO, which dataset the rows belong to: \code{"apc"}
+(admitted patient care, default), \code{"nac"} (outpatients), and for HRG4+
+also \code{"em"} (emergency medicine), \code{"acc"} (adult critical care), \code{"pcc"}
+(paediatric critical care), \code{"ncc"} (neonatal critical care) or \code{"nrd"}
+(renal).}
 }
 \value{
-For MS-DRG, a data frame with one row per claim; for HRG4+, a list
-with \code{episodes} and \code{spells} data frames (see \code{\link[=hrg_group_apc]{hrg_group_apc()}}).
+For MS-DRG, a data frame with one row per claim; for HRG4+ and PSO
+admitted patient care, a list with \code{episodes} and \code{spells} data frames
+(see \code{\link[=hrg_group_apc]{hrg_group_apc()}} and \code{\link[=pso_flag_apc]{pso_flag_apc()}}); one data frame per record
+for the other datasets.
 }
 \description{
 Assign casemix groups to claims

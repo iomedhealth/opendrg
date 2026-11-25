@@ -2,9 +2,11 @@
 
 S3method(group,hrg_grouper)
 S3method(group,msdrg_grouper)
+S3method(group,pso_grouper)
 S3method(print,hrg_tables)
 S3method(print,msdrg_tables)
 S3method(print,opendrg_grouper)
+S3method(print,pso_tables)
 export(group)
 export(grouper)
 export(hrg_group_acc)
@@ -22,6 +24,11 @@ export(msdrg_import_cms)
 export(msdrg_normalize_code)
 export(msdrg_tables)
 export(msdrg_versions)
+export(pso_flag_apc)
+export(pso_flag_nac)
+export(pso_import_rules)
+export(pso_tables)
+export(pso_versions)
 importFrom(rlang,
   "%||%",
   ":=",

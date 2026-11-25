@@ -4,18 +4,20 @@
 #' and the engine that evaluates them. Pass it to [group()] together with
 #' claim data.
 #'
-#' @param system Grouping system: `"msdrg"` (CMS Medicare Severity DRGs) or
-#'   `"hrg4plus"` (NHS England HRG4+, admitted patient care).
-#' @param version Version label, e.g. `"44.0"` for MS-DRG FY 2027 or
-#'   `"2024-25-nc"` for the HRG4+ 2024/25 National Costs design. Defaults to
-#'   the latest bundled version. May also be a table set built with
-#'   [msdrg_import_cms()] or [hrg_import_code_to_group()].
+#' @param system Grouping system: `"msdrg"` (CMS Medicare Severity DRGs),
+#'   `"hrg4plus"` (NHS England HRG4+) or `"pso"` (NHS England Prescribed
+#'   Specialised Services identification rules).
+#' @param version Version label, e.g. `"44.0"` for MS-DRG FY 2027,
+#'   `"2024-25-nc"` for the HRG4+ 2024/25 National Costs design or
+#'   `"2025-26"` for the PSO 2025/26 rules. Defaults to the latest bundled
+#'   version. May also be a table set built with [msdrg_import_cms()],
+#'   [hrg_import_code_to_group()] or [pso_import_rules()].
 #' @return An object of class `opendrg_grouper`.
 #' @export
 #' @examples
 #' g <- grouper("msdrg", version = "44.0")
 #' g
-grouper <- function(system = c("msdrg", "hrg4plus"), version = NULL) {
+grouper <- function(system = c("msdrg", "hrg4plus", "pso"), version = NULL) {
   system <- rlang::arg_match(system)
   switch(system,
     msdrg = {
@@ -31,13 +33,21 @@ grouper <- function(system = c("msdrg", "hrg4plus"), version = NULL) {
         list(system = "hrg4plus", version = tbls$version, tables = tbls),
         class = c("hrg_grouper", "opendrg_grouper")
       )
+    },
+    pso = {
+      tbls <- pso_tables(version)
+      structure(
+        list(system = "pso", version = tbls$version, tables = tbls),
+        class = c("pso_grouper", "opendrg_grouper")
+      )
     }
   )
 }
 
 #' @export
 print.opendrg_grouper <- function(x, ...) {
-  label <- switch(x$system, msdrg = "CMS MS-DRG", hrg4plus = "NHS England HRG4+", x$system)
+  label <- switch(x$system, msdrg = "CMS MS-DRG", hrg4plus = "NHS England HRG4+",
+                  pso = "NHS England Prescribed Specialised Services", x$system)
   cat(sprintf("<opendrg grouper> %s, version %s\n", label, x$version))
   t <- x$tables
   if (x$system == "msdrg") {
@@ -47,11 +57,16 @@ print.opendrg_grouper <- function(x, ...) {
       n_drg, nrow(t$drg_logic), format(nrow(t$dx_codes), big.mark = ","),
       format(nrow(t$pr_codes), big.mark = ",")
     ))
-  } else {
+  } else if (x$system == "hrg4plus") {
     cat(sprintf(
       "%s HRGs, %s code mappings, %s flag conditions, %s list entries\n",
       format(nrow(t$hrgs), big.mark = ","), format(nrow(t$code_to_group), big.mark = ","),
       format(nrow(t$flag_rules), big.mark = ","), format(nrow(t$lists), big.mark = ",")
+    ))
+  } else {
+    cat(sprintf(
+      "%d service lines, %d identification rules, %s list entries\n",
+      nrow(t$service_lines), length(unique(t$rules$doc_flag)), format(nrow(t$lists), big.mark = ",")
     ))
   }
   invisible(x)
@@ -68,8 +83,10 @@ print.opendrg_grouper <- function(x, ...) {
 #' @param procedures A data frame with one row per procedure code on a claim
 #'   (MS-DRG only).
 #' @param ... Passed on to the system-specific method.
-#' @return For MS-DRG, a data frame with one row per claim; for HRG4+, a list
-#'   with `episodes` and `spells` data frames (see [hrg_group_apc()]).
+#' @return For MS-DRG, a data frame with one row per claim; for HRG4+ and PSO
+#'   admitted patient care, a list with `episodes` and `spells` data frames
+#'   (see [hrg_group_apc()] and [pso_flag_apc()]); one data frame per record
+#'   for the other datasets.
 #' @export
 group <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...) {
   UseMethod("group")
@@ -82,10 +99,11 @@ group.msdrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = 
 
 #' @export
 #' @rdname group
-#' @param dataset For HRG4+, which dataset the rows belong to: `"apc"`
-#'   (admitted patient care, default), `"nac"` (outpatients), `"em"`
-#'   (emergency medicine), `"acc"` (adult critical care), `"pcc"` (paediatric
-#'   critical care), `"ncc"` (neonatal critical care) or `"nrd"` (renal).
+#' @param dataset For HRG4+ and PSO, which dataset the rows belong to: `"apc"`
+#'   (admitted patient care, default), `"nac"` (outpatients), and for HRG4+
+#'   also `"em"` (emergency medicine), `"acc"` (adult critical care), `"pcc"`
+#'   (paediatric critical care), `"ncc"` (neonatal critical care) or `"nrd"`
+#'   (renal).
 group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...,
                               dataset = c("apc", "nac", "em", "acc", "pcc", "ncc", "nrd")) {
   dataset <- rlang::arg_match(dataset)
@@ -97,5 +115,16 @@ group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NU
     pcc = hrg_group_pcc(claims, tables = grouper$tables),
     ncc = hrg_group_ncc(claims, tables = grouper$tables),
     nrd = hrg_group_nrd(claims, tables = grouper$tables)
+  )
+}
+
+#' @export
+#' @rdname group
+group.pso_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...,
+                              dataset = c("apc", "nac")) {
+  dataset <- rlang::arg_match(dataset)
+  switch(dataset,
+    apc = pso_flag_apc(claims, tables = grouper$tables),
+    nac = pso_flag_nac(claims, tables = grouper$tables)
   )
 }

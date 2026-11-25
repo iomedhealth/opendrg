@@ -7,8 +7,9 @@
 Open, portable implementations of hospital casemix groupers in R.
 
 Casemix groupers assign hospital stays to payment/costing groups — DRGs in the
-US, HRGs in England — from diagnosis and procedure codes. The official
-implementations ship as platform-specific binaries. `opendrg` re-implements
+US, HRGs and specialised-service flags in England — from diagnosis and
+procedure codes. The official implementations ship as platform-specific
+binaries. `opendrg` re-implements
 them as **published logic tables + a small evaluation engine** in plain R, so
 grouping can run anywhere R runs, on data frames, and (by design) eventually
 inside databases through dbplyr.
@@ -17,6 +18,7 @@ inside databases through dbplyr.
 |---|---|---|
 | CMS **MS-DRG** v43.0, v43.1 (FY 2026), v44.0 (FY 2027) | Working | 9,864 / 9,864 CMS TESTDB claims identical to CMS's grouper for every version: final & initial DRG, MDC, return code, severity, HAC handling |
 | NHS England **HRG4+** 2024/25 National Costs and 2025/26 Local Payment (all 7 datasets) | Working | Every record of NHS England's official test data identical to the expected results: admitted patient care (750 episodes, 477 spells), outpatients (200), emergency medicine (300), adult / paediatric / neonatal critical care (250 / 250 / 300), renal (200) |
+| NHS England **Prescribed Specialised Services** (PSO) 2025/26 and 2025/26 Version 2 | Working | Every record of NHS England's official sample data identical to the expected results: 300 admitted episodes / 141 spells (service-line list, dominant line and NPoC at episode and spell level, quality messages) and 200 outpatient attendances |
 
 ## Usage
 
@@ -42,6 +44,11 @@ res <- group(h, episodes)      # DIAG_01.., OPER_01.., STARTAGE, SEX, EPIDUR, ..
 res$episodes                   # fce_hrg, grouping_method, dominant_procedure, unbundled_hrgs, spell_hrg, ...
 res$spells
 group(h, attendances, dataset = "nac")   # outpatients; also "em", "acc", "pcc", "ncc", "nrd"
+
+# Prescribed Specialised Services: which service lines an episode / attendance triggers
+p <- grouper("pso", version = "2025-26-v2")
+group(p, episodes)$episodes    # service_line_list, service_line, fce_npoc, spell_service_line, ...
+group(p, attendances, dataset = "nac")
 ```
 
 Inputs are long-format data frames (one row per claim / diagnosis /
@@ -67,8 +74,18 @@ CMS and NHS England both publish the complete grouping logic as data:
   the split rules, then groups spells from a pseudo-record of the dominant
   episode — exactly as NHS England's grouper does on its published test data.
 
-New releases are imported with `msdrg_import_cms()` /
-`hrg_import_code_to_group()`; the engines do not change.
+* **Prescribed Specialised Services**: the *Guide to Identification Rules*
+  workbook lists, per service line, the identification rules as conjunctions
+  of code lists (ICD-10 by position, OPCS-4 anywhere or as the dominant
+  procedure, code combinations, provider eligibility, age, sex, specialty,
+  admission method, attendance and referral source) and the dominance
+  hierarchies. `opendrg` evaluates every rule, lists the service lines a
+  record qualifies for and picks the dominant line and National Programme of
+  Care per episode, attendance and spell.
+
+New releases are imported with `msdrg_import_cms()`,
+`hrg_import_code_to_group()` and `pso_import_rules()`; the engines do not
+change.
 
 ## Validation
 
@@ -84,7 +101,8 @@ Package code is MIT. Bundled logic tables are derived from publicly released
 government data:
 
 * CMS MS-DRG tables are a work of the US federal government (public domain).
-* HRG4+ tables are derived from NHS England's *Code to Group* workbooks and
+* HRG4+ and Prescribed Specialised Services tables are derived from NHS
+  England's *Code to Group* and *Guide to Identification Rules* workbooks and
   contain public sector information licensed under the
   [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
   © NHS England.

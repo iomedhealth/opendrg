@@ -4,16 +4,18 @@
 \alias{grouper}
 \title{Create a casemix grouper}
 \usage{
-grouper(system = c("msdrg", "hrg4plus"), version = NULL)
+grouper(system = c("msdrg", "hrg4plus", "pso"), version = NULL)
 }
 \arguments{
-\item{system}{Grouping system: \code{"msdrg"} (CMS Medicare Severity DRGs) or
-\code{"hrg4plus"} (NHS England HRG4+, admitted patient care).}
+\item{system}{Grouping system: \code{"msdrg"} (CMS Medicare Severity DRGs),
+\code{"hrg4plus"} (NHS England HRG4+) or \code{"pso"} (NHS England Prescribed
+Specialised Services identification rules).}
 
-\item{version}{Version label, e.g. \code{"44.0"} for MS-DRG FY 2027 or
-\code{"2024-25-nc"} for the HRG4+ 2024/25 National Costs design. Defaults to
-the latest bundled version. May also be a table set built with
-\code{\link[=msdrg_import_cms]{msdrg_import_cms()}} or \code{\link[=hrg_import_code_to_group]{hrg_import_code_to_group()}}.}
+\item{version}{Version label, e.g. \code{"44.0"} for MS-DRG FY 2027,
+\code{"2024-25-nc"} for the HRG4+ 2024/25 National Costs design or
+\code{"2025-26"} for the PSO 2025/26 rules. Defaults to the latest bundled
+version. May also be a table set built with \code{\link[=msdrg_import_cms]{msdrg_import_cms()}},
+\code{\link[=hrg_import_code_to_group]{hrg_import_code_to_group()}} or \code{\link[=pso_import_rules]{pso_import_rules()}}.}
 }
 \value{
 An object of class \code{opendrg_grouper}.
