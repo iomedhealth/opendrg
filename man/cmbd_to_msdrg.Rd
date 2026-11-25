@@ -51,7 +51,11 @@ common variants (\code{DIAG_01}, \code{POA_01}, \code{PROC_01}, \code{TIPALTA}, 
 
 Rows are not filtered: DRGs are meaningful for hospitalisation contacts, so
 filter on \code{TIPCONT} (1 = hospitalización) before or after conversion; the
-contact type is carried through as \code{contact_type} in \code{claims}.
+contact type is carried through as \code{contact_type} in \code{claims}. Spanish
+hospitals report present-on-admission for every diagnosis, so group with
+\code{poa_exempt = "non_exempt"}: CMS's hospital-acquired condition rules then
+apply (a condition coded \code{N} stops counting towards severity), whereas the
+default \code{"unknown"} returns code 15 for such records, as CMS's software does.
 }
 \examples{
 rae <- data.frame(
@@ -61,5 +65,6 @@ rae <- data.frame(
 )
 inp <- cmbd_to_msdrg(rae)
 inp$claims
-group(grouper("msdrg", version = "44.0"), inp)[c("claim_id", "drg", "severity")]
+out <- group(grouper("msdrg", version = "44.0"), inp, poa_exempt = "non_exempt")
+out[c("claim_id", "drg", "severity")]
 }

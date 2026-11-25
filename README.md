@@ -84,6 +84,11 @@ imported with one function call.
 | NHS England **HRG4+** | 2024/25 National Costs, 2025/26 Local Payment | Every record of NHS England's official test data gives the published expected result, for all seven datasets: inpatient episodes and spells, outpatients, emergency medicine, adult / paediatric / neonatal critical care, renal (2,250 records) |
 | NHS England **Prescribed Specialised Services** | 2025/26, 2025/26 Version 2 | Every record of NHS England's official sample data gives the published service lines, dominant line and programme of care, for inpatients (300 episodes) and outpatients (200 attendances) |
 
+Also included: an adapter from the Spanish discharge register (CMBD /
+RAE-CMBD) to the MS-DRG input, a reader for its exchange files and a
+synthetic 1,000-contact extract to try them on (see
+[Spanish hospital data](#spanish-hospital-data-cmbd--rae-cmbd)).
+
 ## Installation
 
 ```r
@@ -252,9 +257,62 @@ group(grouper("msdrg", version = "44.0"), cmbd_to_msdrg(rae))[c("drg", "drg_desc
 #> 1 284 ACUTE MYOCARDIAL INFARCTION, EXPIRED WITH CC
 ```
 
-Filter to hospitalisation contacts (`TIPCONT == 1`) before grouping; the
-contact type is carried through in `claims$contact_type`. Mind the code-year
-lag: CIE-10-ES 2024 corresponds to ICD-10-CM/PCS FY2022–23.
+Real extracts are delimited text files in the field order of RD 69/2015, which
+no hospital publishes. The package ships a synthetic one instead — a month of
+discharges of a fictional general hospital, 1,000 contacts with the casemix,
+coding depth and conventions of a real file (deliveries and newborns, heart
+failure, pneumonia, sepsis, hip fractures, joint replacements, chemotherapy
+admissions, day-hospital sessions, ambulatory surgery, readmissions, ICU stays,
+hospital-acquired conditions flagged `POA = N`, ...) but no real patients.
+`cmbd_read()` reads such files keeping every field as text:
+
+```r
+rae <- cmbd_read(cmbd_example())
+rae[, c("HISTORIA", "FECNAC", "SEXO", "FECINICONT", "TIPCONT", "SERVICIO", "TIPALT", "D1", "POAD1", "D2", "PROC1")]
+#> # A tibble: 1,000 × 11
+#>   HISTORIA FECNAC   SEXO  FECINICONT    TIPCONT SERVICIO TIPALT D1     POAD1 D2     PROC1
+#>   <chr>    <chr>    <chr> <chr>         <chr>   <chr>    <chr>  <chr>  <chr> <chr>  <chr>
+#> 1 1624857  08011926 1     24042024 2012 1       NML      4      J96.21 S     Z99.81 <NA>
+#> 2 6609874  03031940 1     21042024 1728 1       NML      1      J44.1  S     I27.20 5A09457
+#> 3 3826608  23111958 2     24042024 1732 1       DIG      1      K80.50 S     E87.1  0FC98ZZ
+#> # ℹ 997 more rows
+
+dplyr::count(rae, TIPCONT)   # 1 hospitalisation, 2 home hospitalisation, 3 day hospital, 4 ambulatory surgery
+#> # A tibble: 4 × 2
+#>   TIPCONT     n
+#>   <chr>   <int>
+#> 1 1         897
+#> 2 2          12
+#> 3 3          32
+#> 4 4          59
+
+hosp <- dplyr::filter(rae, TIPCONT == "1")
+out <- group(grouper("msdrg", version = "44.0"), cmbd_to_msdrg(hosp), poa_exempt = "non_exempt")
+dplyr::count(out, drg, drg_description, sort = TRUE)
+#> # A tibble: 157 × 3
+#>     drg drg_description                                                                         n
+#> 1   795 NORMAL NEWBORN                                                                         58
+#> 2   807 VAGINAL DELIVERY WITHOUT STERILIZATION OR D&C WITHOUT CC/MCC                           58
+#> 3   690 KIDNEY AND URINARY TRACT INFECTIONS WITHOUT MCC                                        38
+#> 4   470 MAJOR HIP AND KNEE JOINT REPLACEMENT OR REATTACHMENT OF LOWER EXTREMITY WITHOUT MCC    36
+#> 5   203 BRONCHITIS AND ASTHMA WITHOUT CC/MCC                                                   26
+#> 6   419 LAPAROSCOPIC CHOLECYSTECTOMY WITHOUT C.D.E. WITHOUT CC/MCC                             23
+#> 7   292 HEART FAILURE AND SHOCK WITH CC                                                        22
+#> 8   392 ESOPHAGITIS, GASTROENTERITIS AND MISCELLANEOUS DIGESTIVE DISORDERS WITHOUT MCC         22
+#> # ℹ 149 more rows
+```
+
+DRGs are only meaningful for hospitalisation contacts, hence the filter on
+`TIPCONT`; the contact type is carried through in `claims$contact_type`.
+Spanish hospitals report present-on-admission for every diagnosis, so pass
+`poa_exempt = "non_exempt"`: the grouper then applies CMS's hospital-acquired
+condition rules (a pressure ulcer or a fall coded `POAD = N` stops counting
+towards severity) instead of, as CMS's software does when a hospital's POA
+status is unknown, refusing to group such records (return code 15). Mind
+the code-year lag: CIE-10-ES 2024 corresponds to ICD-10-CM/PCS FY2023, and the
+synthetic file only uses codes that exist in both FY2023 and the bundled
+tables. The generator (`data-raw/cmbd-synthetic.R`) is seeded and documents
+every clinical profile, so the file can be regenerated or extended.
 
 ## Glossary
 
