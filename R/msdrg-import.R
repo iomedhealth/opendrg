@@ -6,7 +6,7 @@
 #' (`DXPATERN`, `PRPATERN`), the code-to-pattern maps (`DXLIST`, `PRLIST`), the
 #' attribute vocabularies (`DXATTLST`, `PRATTLST`), the CC/MCC exclusion list
 #' (`EXCLUSN`), procedure clusters (`PRCLSTRS`) and descriptions (`MDCDSC`,
-#' `DRGDSC4`). This function parses them into tidy tables that the opendrg
+#' `DRGDSC3`). This function parses them into tidy tables that the opendrg
 #' engine evaluates.
 #'
 #' @param dir Path to the folder containing the flat files.
@@ -33,7 +33,7 @@ msdrg_import_cms <- function(dir, version, hac_formulas = NULL) {
   }
 
   required <- c("DRGLOGIC", "DXPATERN", "PRPATERN", "DXLIST", "PRLIST",
-                "DXATTLST", "PRATTLST", "EXCLUSN", "PRCLSTRS", "MDCDSC", "DRGDSC4")
+                "DXATTLST", "PRATTLST", "EXCLUSN", "PRCLSTRS", "MDCDSC", "DRGDSC3")
   missing <- required[!file.exists(file.path(dir, required))]
   if (length(missing) > 0) {
     cli::cli_abort("Missing CMS flat file{?s} in {.path {dir}}: {.file {missing}}.")
@@ -131,8 +131,14 @@ msdrg_import_cms <- function(dir, version, hac_formulas = NULL) {
 
   mdc_desc <- read_desc("MDCDSC", "mdc") |>
     dplyr::mutate(mdc = as.integer(.data$mdc))
-  drg_desc <- read_desc("DRGDSC4", "drg") |>
-    dplyr::mutate(drg = as.integer(.data$drg))
+  # DRGDSC3 rows are "drg,MDC nnX,description" (X = P surgical / M medical,
+  # nn blank for pre-MDC DRGs); DRGDSC4 is the base-DRG x severity catalogue.
+  drg_desc <- read_desc("DRGDSC3", "drg") |>
+    dplyr::transmute(
+      drg = as.integer(.data$drg),
+      description = stringr::str_remove(.data$description, "^MDC [0-9 ]{2}[A-Z ],"),
+      description = stringr::str_remove_all(.data$description, "^\"|\"$")
+    )
 
   structure(
     list(

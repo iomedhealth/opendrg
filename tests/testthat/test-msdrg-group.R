@@ -91,3 +91,15 @@ test_that("input validation reports missing columns and unknown claims", {
     "absent from"
   )
 })
+
+test_that("every DRG in the logic has its CMS description (DRGDSC3, not the base-DRG x severity catalogue)", {
+  for (v in msdrg_versions()) {
+    t <- msdrg_tables(v)
+    expect_true(all(setdiff(unique(t$drg_logic$drg), 0) %in% t$drg_desc$drg))
+    desc <- stats::setNames(t$drg_desc$description, t$drg_desc$drg)
+    expect_equal(desc[["1"]], "HEART TRANSPLANT OR IMPLANT OF HEART ASSIST SYSTEM WITH MCC")
+    expect_match(desc[["251"]], "^PERCUTANEOUS CARDIOVASCULAR PROCEDURES")
+    expect_equal(desc[["281"]], "ACUTE MYOCARDIAL INFARCTION, DISCHARGED ALIVE WITH CC")
+    expect_equal(desc[["999"]], "UNGROUPABLE")
+  }
+})
