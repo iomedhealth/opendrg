@@ -81,6 +81,21 @@ group.msdrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = 
 }
 
 #' @export
-group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...) {
-  hrg_group_apc(claims, tables = grouper$tables)
+#' @rdname group
+#' @param dataset For HRG4+, which dataset the rows belong to: `"apc"`
+#'   (admitted patient care, default), `"nac"` (outpatients), `"em"`
+#'   (emergency medicine), `"acc"` (adult critical care), `"pcc"` (paediatric
+#'   critical care), `"ncc"` (neonatal critical care) or `"nrd"` (renal).
+group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...,
+                              dataset = c("apc", "nac", "em", "acc", "pcc", "ncc", "nrd")) {
+  dataset <- rlang::arg_match(dataset)
+  switch(dataset,
+    apc = hrg_group_apc(claims, tables = grouper$tables),
+    nac = hrg_group_nac(claims, tables = grouper$tables),
+    em = hrg_group_em(claims, tables = grouper$tables),
+    acc = hrg_group_acc(claims, tables = grouper$tables),
+    pcc = hrg_group_pcc(claims, tables = grouper$tables),
+    ncc = hrg_group_ncc(claims, tables = grouper$tables),
+    nrd = hrg_group_nrd(claims, tables = grouper$tables)
+  )
 }

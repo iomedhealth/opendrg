@@ -167,8 +167,11 @@ hrg_episode_context <- function(row, tbls) {
     DISDEST = hrg_scalar(row, "DISDEST"), DISMETH = hrg_scalar(row, "DISMETH"),
     MAINSPEF = hrg_scalar(row, "MAINSPEF"), TRETSPEF = hrg_scalar(row, "TRETSPEF"),
     NEOCARE = hrg_scalar(row, "NEOCARE"), FIRSTATT = hrg_scalar(row, "FIRSTATT"),
-    CLASSPAT = hrg_scalar(row, "CLASSPAT"), EPIDUR = hrg_scalar(row, "EPIDUR")
+    CLASSPAT = hrg_scalar(row, "CLASSPAT"), EPIDUR = hrg_scalar(row, "EPIDUR"),
+    RenalSite = hrg_scalar(row, "RENALSITE"), RenalAccess = hrg_scalar(row, "RENALACCESS"),
+    RenalBBV = toupper(c(hrg_scalar(row, "HBV"), hrg_scalar(row, "HCV"), hrg_scalar(row, "HIV")))
   )
+  if (is.na(scalars$Age)) scalars$Age <- hrg_scalar(row, "AGE")
   list(
     diag = diag, oper = oper, eff = hrg_form_combinations(oper, tbls),
     consumed = rep(FALSE, length(oper)), current = NA_integer_, dominant_pos = NA_integer_,
@@ -294,7 +297,7 @@ hrg_validate_episode <- function(row, ctx, tbls) {
 # ---------------------------------------------------------------------------
 # Unbundled HRGs
 
-hrg_unbundle <- function(ctx, tbls) {
+hrg_unbundle <- function(ctx, tbls, dataset = "apc") {
   out <- list()
   errs <- character()
   by_position <- vector("list", length(ctx$eff))
@@ -322,13 +325,19 @@ hrg_unbundle <- function(ctx, tbls) {
   # Field-driven unbundled HRGs.
   tfc <- ctx$scalars$TRETSPEF
   transport <- NULL
-  if (!is.na(tfc) && tfc %in% c("242", "422")) {
+  spc <- character()
+  if (dataset == "nac") {
+    if (!is.na(tfc) && tfc == "315") {
+      root <- hrg_eval_pairs(tbls$c2g_by_key[["USPC2|TRETSPEF|315"]], ctx, tbls)
+      if (!is.na(root) && root != "UZ99") spc <- c(spc, hrg_split(root, ctx, tbls))
+    }
+  }
+  if (dataset == "apc" && !is.na(tfc) && tfc %in% c("242", "422")) {
     pairs <- tbls$c2g_by_key[[paste("UNPCC", "TRETSPEF", tfc, sep = "|")]]
     root <- hrg_eval_pairs(pairs, ctx, tbls)
     if (!is.na(root)) transport <- hrg_split(root, ctx, tbls)
   }
-  spc <- character()
-  if (!is.na(tfc) && tfc == "315") {
+  if (dataset == "apc" && !is.na(tfc) && tfc == "315") {
     pairs <- tbls$c2g_by_key[[paste("USPC1", "TRETSPEF", "315", sep = "|")]]
     root <- hrg_eval_pairs(pairs, ctx, tbls)
     if (!is.na(root) && root != "UZ99") {
@@ -336,10 +345,12 @@ hrg_unbundle <- function(ctx, tbls) {
       spc <- c(spc, paste0(hrg, "*", if (grepl("^SD01", hrg)) max(1, ctx$spc_days) else 1))
     }
   }
-  pairs <- tbls$c2g_by_key[[paste("USPC3", "N/A", "N/A", sep = "|")]]
-  root <- hrg_eval_pairs(pairs, ctx, tbls)
-  if (!is.na(root) && root != "UZ99") {
-    spc <- c(spc, paste0(hrg_split(root, ctx, tbls), "*1"))
+  if (dataset == "apc") {
+    pairs <- tbls$c2g_by_key[[paste("USPC3", "N/A", "N/A", sep = "|")]]
+    root <- hrg_eval_pairs(pairs, ctx, tbls)
+    if (!is.na(root) && root != "UZ99") {
+      spc <- c(spc, paste0(hrg_split(root, ctx, tbls), "*1"))
+    }
   }
   hrgs <- character()
   for (i in seq_along(by_position)) {

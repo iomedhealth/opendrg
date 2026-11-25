@@ -22,6 +22,12 @@ tbls$icd10$description <- NULL
 tbls$lists$description <- NULL
 tbls$code_to_group$description <- NULL
 tbls$combination_codes$description <- NULL
+
+# Logic that NHS England publishes only in the Chapter Summaries PDF
+# (transcribed in data-raw/hrg/): the emergency medicine investigation and
+# treatment hierarchies.
+tbls$em_hierarchy <- tibble::as_tibble(utils::read.csv("data-raw/hrg/em-hierarchy.csv",
+  colClasses = c("character", "character", "integer")))
 print(tbls)
 
 out_dir <- file.path("inst", "extdata", "hrg")
