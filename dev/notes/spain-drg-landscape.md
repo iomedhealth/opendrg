@@ -144,7 +144,35 @@ confirms, and where the Spanish deployment differs from the document.
    date (the register's ddmmyyyy / ddmmyy / ISO formats), `POAD*` S/N/D/I/E → Y/N/U/W/1,
    `PROCEXT*` optional. The same mapping is what the CGS deployment does internally for APR.
 
-## 5. Sources
+## 5. What a "CMBD" looks like in practice
+
+Two different artefacts go by the name.
+
+**Hospital CMBD reports (published).** Every SNS hospital's annual *memoria* carries a
+"Casuística (CMBD)" / "Indicadores de gestión CMBD" section produced from its own grouped
+CMBD. Example, Hospital Universitario Virgen Macarena (Sevilla), *Memoria 2023* §3.1.7: 33,703
+discharges, adjusted mean stay (EMAF) 7.59 days, IEMA 0.95, mean weight 1.0439, 1,917 deaths,
+then "APR GRD más frecuentes" — `560 Parto` 1,515 cases, EM 2.44, EMAf 2.56, IEMA 0.95, weight
+0.3128; `194 Insuficiencia cardiaca` 951, 7.91, 8.77, 0.90, 0.793; `139 Otra neumonía` 873 …;
+plus the same table per clinical service (cardiology: `174 Intervenciones cardiacas percutáneas
+con IAM` 413 cases, weight 1.9541, 45 outliers). Madrid's hospitals use a common template
+(*Memoria 2023*, e.g. Ramón y Cajal p. 45 "Casuística (CMBD)", top-25 medical and surgical
+GRDs with episodes, %, EM and weight, sourced "CMBD APR GRD 38"). The Ministry's counterpart is
+*RAE-CMBD: Actividad y resultados de la hospitalización en el SNS* (annual). These reports are
+the *output* of the licensed grouper, never the records.
+
+**The per-episode CMBD file (not published).** Microdata are released only on request
+(Ministry form, ~1 month, selected variables; regions likewise). The file hospitals actually
+send is specified by each region's procedure manual on top of RD 69/2015: Castilla y León
+(public and private layouts, RD names `FECNAC`, `SEXO`, `FECINICONT`, `TIPCONT`, `TIPALT`,
+`D1`–`D20`, `POAD1`–`20`, `PROC1`–`20`, `PROCEXT1`–`6`); Andalucía (pipe-delimited `.TXT`
+named `HOS<hospital>04<yy>.TXT`, codes written with the dot — `I21.4`, `0016071` — and,
+beyond the national model, a **date-time, urgent/scheduled flag and external-centre flag per
+procedure** (`FECP1`–`FECP20`), which would make the admission APR DRG of §3 computable there).
+`cmbd_to_msdrg()` accepts these layouts; `tests/testthat/test-cmbd.R` holds a four-record
+synthetic file in the RD 69/2015 layout.
+
+## 6. Sources
 
 * Ministerio de Sanidad, *Costes hospitalarios – Contabilidad analítica*:
   https://www.sanidad.gob.es/estadEstudios/estadisticas/inforRecopilaciones/anaDesarrolloGDR.htm
@@ -157,6 +185,11 @@ confirms, and where the Spanish deployment differs from the document.
   Administrativas* (Plataforma de Contratación del Sector Público; copies in `target/Spain/`).
 * Solventum, *APR DRG Methodology Overview*, software version 43.0, GRP-041 (Sept 2025).
 * Ministerio de Sanidad, *Pesos y Costes hospitalarios SNS GRD APR 2024* (xlsx, v40).
+* Hospital Universitario Virgen Macarena, *Memoria 2023* (hospitalmacarena.es); Comunidad de
+  Madrid hospital *Memorias 2023* (Ramón y Cajal, Gregorio Marañón, Clínico San Carlos, …).
+* SAS, *Manual de Instrucciones del CMBD de Andalucía 2021*; SACYL, *Manual Procedimiento CMBD
+  CyL (adaptación RAE-CMBD)* 2020; Ministerio de Sanidad, *FAQ solicitud de microdatos
+  RAE-CMBD/CMBD* (Nov 2026). Copies in `target/Spain/`.
 * Plataforma de Contratación del Sector Público via LiciRadar: SIGESA award history and
   Ministry tender 202505PAO005.
 * SIGESA product pages (Solventum APR-GRD, ENARA, Alcor POB/CRG); IOC/Generalitat training
