@@ -26,7 +26,7 @@ omop_to_hrg(
   exclude_nlp = TRUE,
   dx_vocabulary = "ICD10",
   pr_vocabulary = "OPCS4",
-  snomed_fallback = FALSE,
+  vocabulary_fallback = FALSE,
   link_by = c("visit_id", "date_overlap"),
   drop_invalid_secondary = TRUE,
   provider_code = NULL,
@@ -131,7 +131,7 @@ Defaults to \code{TRUE}.}
 \item{pr_vocabulary}{Character vector of procedure \code{vocabulary_id} values in
 \code{concept} (default \code{"OPCS4"}).}
 
-\item{snomed_fallback}{Logical; if \code{TRUE} and \code{concept_relationship} is
+\item{vocabulary_fallback}{Logical; if \code{TRUE} and \code{concept_relationship} is
 present in \code{cdm}, reverse-map standard \code{condition_concept_id} values via
 \code{"Maps to"} to \code{dx_vocabulary} for stays that have no source-concept
 diagnoses. Defaults to \code{FALSE} (reverse mapping is lossy).}
@@ -205,7 +205,7 @@ Every UK/NHS mapping assumption is explicit and recorded in \code{quality}:
 automatically padded with \code{"X"} when the padded code exists in the HRG4+
 code table (e.g. \code{I10} becomes \code{I10X}). Free-text NLP rows
 (\code{condition_type_concept_id == 32858}) are excluded by default; pass
-\code{snomed_fallback = TRUE} to reverse-map standard SNOMED concepts via
+\code{vocabulary_fallback = TRUE} to reverse-map standard SNOMED concepts via
 \code{concept_relationship} (\code{"Maps to"}) for stays without source ICD-10 codes.
 \item \strong{Procedures (OPCS-4)} are read from both \code{procedure_concept_id} and
 \code{procedure_source_concept_id} in \code{pr_vocabulary} (default \code{"OPCS4"}),

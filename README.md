@@ -376,7 +376,7 @@ and `omop_msdrg()` make every assumption explicit rather than guessing silently:
   v5.3 `discharge_to_*` names, plus `UB04 Pt dis status` concepts directly),
   and `default_discharge = "01"` (routine home).
 * **Diagnoses & procedures**: reads `ICD10CM` from `condition_source_concept_id`
-  (excluding NLP rows `32858` by default; optional `snomed_fallback = TRUE` via
+  (excluding NLP rows `32858` by default; optional `vocabulary_fallback = TRUE` via
   `concept_relationship`), reads `ICD10PCS` from both `procedure_concept_id`
   and `procedure_source_concept_id`, flags stays carrying unmapped local
   procedures (`has_unmapped_pr`), and separates non-billable category-level

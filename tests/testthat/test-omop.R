@@ -223,7 +223,7 @@ test_that("principal strategies handle CDMs without primary flags honestly", {
   expect_equal(res_first$return_code, 0L)
 })
 
-test_that("discharge_map, death table, v5.3 column names, date_overlap and snomed_fallback work", {
+test_that("discharge_map, death table, v5.3 column names, date_overlap and vocabulary_fallback work", {
   cdm <- make_synthetic_omop_tables()
   # Remove death table so site-specific discharge_map ("5" = exitus) drives visit 102
   cdm$death <- NULL
@@ -255,10 +255,10 @@ test_that("discharge_map, death table, v5.3 column names, date_overlap and snome
   res_ov <- omop_msdrg(cdm_novid, tables = "44.0", visit_ids = 101L, link_by = "date_overlap")
   expect_equal(res_ov$drg, 251L)
 
-  # snomed_fallback reverse-maps standard SNOMED concepts when source concepts are 0
+  # vocabulary_fallback reverse-maps standard SNOMED concepts when source concepts are 0
   cdm_snomed <- cdm
   cdm_snomed$condition_occurrence$condition_source_concept_id <- 0L
-  res_snomed <- omop_msdrg(cdm_snomed, tables = "44.0", visit_ids = 101L, snomed_fallback = TRUE)
+  res_snomed <- omop_msdrg(cdm_snomed, tables = "44.0", visit_ids = 101L, vocabulary_fallback = TRUE)
   expect_equal(res_snomed$return_code, 0L)
   expect_equal(res_snomed$principal_code, "I214")
   expect_equal(res_snomed$drg, 251L)

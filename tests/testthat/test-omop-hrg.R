@@ -224,7 +224,7 @@ test_that("episodes = 'visit_detail' builds multi-episode FCE spells properly", 
   expect_equal(omop_hrg_quality(res)$episodes_mode, "visit_detail")
 })
 
-test_that("principal strategies and snomed_fallback work for omop_hrg()", {
+test_that("principal strategies and vocabulary_fallback work for omop_hrg()", {
   cdm <- make_synthetic_uk_omop_tables()
   cdm$condition_occurrence$condition_status_concept_id <- 0L
 
@@ -246,7 +246,7 @@ test_that("principal strategies and snomed_fallback work for omop_hrg()", {
   # SNOMED -> ICD10 reverse-mapping fallback
   cdm_snomed <- make_synthetic_uk_omop_tables()
   cdm_snomed$condition_occurrence$condition_source_concept_id <- 0L
-  res_sn <- omop_hrg(cdm_snomed, tables = "2025-26-lp", visit_ids = 1001L, snomed_fallback = TRUE)
+  res_sn <- omop_hrg(cdm_snomed, tables = "2025-26-lp", visit_ids = 1001L, vocabulary_fallback = TRUE)
   expect_equal(res_sn$episodes$fce_hrg, "HN12F")
 })
 

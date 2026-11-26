@@ -18,7 +18,7 @@ as \code{"2025-26-lp"} or \code{"2024-25-nc"}.}
 \code{episodes}, \code{cohort}, \code{cohort_id}, \code{cohort_match}, \code{start_date},
 \code{end_date}, \code{n_max}, \code{principal}, \code{principal_codes}, \code{unmatched},
 \code{specialty_map}, \code{admission_method_map}, \code{discharge_method_map},
-\code{snomed_fallback}, \code{link_by}).}
+\code{vocabulary_fallback}, \code{link_by}).}
 }
 \value{
 A list with \code{episodes} and \code{spells} tibbles, with the CDM readiness

@@ -26,7 +26,7 @@ present-on-admission indicators.}
 \item{...}{Additional arguments passed to \code{\link[=omop_to_msdrg]{omop_to_msdrg()}} (such as
 \code{cohort}, \code{cohort_id}, \code{cohort_match}, \code{start_date}, \code{end_date}, \code{n_max},
 \code{principal}, \code{principal_codes}, \code{unmatched}, \code{discharge_map},
-\code{default_discharge}, \code{snomed_fallback}, \code{link_by}).}
+\code{default_discharge}, \code{vocabulary_fallback}, \code{link_by}).}
 }
 \value{
 A tibble with OMOP stay columns (\code{claim_id}, optional

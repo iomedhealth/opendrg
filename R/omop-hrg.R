@@ -279,7 +279,7 @@ omop_hrg_pivot_codes <- function(episode_keys, df, prefix, min_cols = 1L) {
 #'   automatically padded with `"X"` when the padded code exists in the HRG4+
 #'   code table (e.g. `I10` becomes `I10X`). Free-text NLP rows
 #'   (`condition_type_concept_id == 32858`) are excluded by default; pass
-#'   `snomed_fallback = TRUE` to reverse-map standard SNOMED concepts via
+#'   `vocabulary_fallback = TRUE` to reverse-map standard SNOMED concepts via
 #'   `concept_relationship` (`"Maps to"`) for stays without source ICD-10 codes.
 #' * **Procedures (OPCS-4)** are read from both `procedure_concept_id` and
 #'   `procedure_source_concept_id` in `pr_vocabulary` (default `"OPCS4"`),
@@ -415,7 +415,7 @@ omop_to_hrg <- function(
     exclude_nlp = TRUE,
     dx_vocabulary = "ICD10",
     pr_vocabulary = "OPCS4",
-    snomed_fallback = FALSE,
+    vocabulary_fallback = FALSE,
     link_by = c("visit_id", "date_overlap"),
     drop_invalid_secondary = TRUE,
     provider_code = NULL,
@@ -859,7 +859,7 @@ omop_to_hrg <- function(
     tibble::tibble(visit_occurrence_id = stays$visit_occurrence_id[0], code = character())
   }
 
-  if (isTRUE(snomed_fallback) && "concept_relationship" %in% names(cdm)) {
+  if (isTRUE(vocabulary_fallback) && "concept_relationship" %in% names(cdm)) {
     stays_with_src <- if (nrow(dx_raw) > 0L) unique(omop_id_chr(dx_raw$visit_occurrence_id)) else character()
     if (length(stays_with_src) < dplyr::n_distinct(stays$.visit_key)) {
       dx_snomed <- co_scoped |>
@@ -1450,7 +1450,7 @@ print.omop_hrg_input <- function(x, ...) {
 #'   `episodes`, `cohort`, `cohort_id`, `cohort_match`, `start_date`,
 #'   `end_date`, `n_max`, `principal`, `principal_codes`, `unmatched`,
 #'   `specialty_map`, `admission_method_map`, `discharge_method_map`,
-#'   `snomed_fallback`, `link_by`).
+#'   `vocabulary_fallback`, `link_by`).
 #' @return A list with `episodes` and `spells` tibbles, with the CDM readiness
 #'   and grouping quality report attached (inspect via [omop_hrg_quality()]).
 #' @export

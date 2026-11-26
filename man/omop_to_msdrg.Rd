@@ -24,7 +24,7 @@ omop_to_msdrg(
   exclude_nlp = TRUE,
   dx_vocabulary = "ICD10CM",
   pr_vocabulary = "ICD10PCS",
-  snomed_fallback = FALSE,
+  vocabulary_fallback = FALSE,
   link_by = c("visit_id", "date_overlap"),
   discharge_map = NULL,
   default_discharge = "01",
@@ -107,7 +107,7 @@ Defaults to \code{TRUE}.}
 \item{pr_vocabulary}{Vocabulary ID for procedures in \code{concept} (default
 \code{"ICD10PCS"}).}
 
-\item{snomed_fallback}{Logical; if \code{TRUE} and \code{concept_relationship} is
+\item{vocabulary_fallback}{Logical; if \code{TRUE} and \code{concept_relationship} is
 present in \code{cdm}, reverse-map standard \code{condition_concept_id} values via
 \code{"Maps to"} to \code{dx_vocabulary} for stays that have no source-concept
 diagnoses. Defaults to \code{FALSE} (reverse mapping is lossy).}
@@ -151,7 +151,7 @@ fields, every mapping assumption is explicit and recorded in \code{quality}:
 \item \strong{Diagnoses} are read from \code{condition_source_concept_id} in the
 \code{ICD10CM} vocabulary (configurable via \code{dx_vocabulary}). Free-text NLP
 extractions (\code{condition_type_concept_id == 32858}) are excluded by default
-(\code{exclude_nlp = TRUE}). Set \code{snomed_fallback = TRUE} to reverse-map
+(\code{exclude_nlp = TRUE}). Set \code{vocabulary_fallback = TRUE} to reverse-map
 standard SNOMED concepts via \code{concept_relationship} (\code{"Maps to"}) for
 stays that carry no source ICD-10-CM concepts.
 \item \strong{Principal diagnosis} is chosen according to \code{principal} — never by a

@@ -499,7 +499,7 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort_tbl, cohort_ma
 #' * **Diagnoses** are read from `condition_source_concept_id` in the
 #'   `ICD10CM` vocabulary (configurable via `dx_vocabulary`). Free-text NLP
 #'   extractions (`condition_type_concept_id == 32858`) are excluded by default
-#'   (`exclude_nlp = TRUE`). Set `snomed_fallback = TRUE` to reverse-map
+#'   (`exclude_nlp = TRUE`). Set `vocabulary_fallback = TRUE` to reverse-map
 #'   standard SNOMED concepts via `concept_relationship` (`"Maps to"`) for
 #'   stays that carry no source ICD-10-CM concepts.
 #' * **Principal diagnosis** is chosen according to `principal` — never by a
@@ -603,7 +603,7 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort_tbl, cohort_ma
 #'   `"ICD10CM"`).
 #' @param pr_vocabulary Vocabulary ID for procedures in `concept` (default
 #'   `"ICD10PCS"`).
-#' @param snomed_fallback Logical; if `TRUE` and `concept_relationship` is
+#' @param vocabulary_fallback Logical; if `TRUE` and `concept_relationship` is
 #'   present in `cdm`, reverse-map standard `condition_concept_id` values via
 #'   `"Maps to"` to `dx_vocabulary` for stays that have no source-concept
 #'   diagnoses. Defaults to `FALSE` (reverse mapping is lossy).
@@ -678,7 +678,7 @@ omop_to_msdrg <- function(
     exclude_nlp = TRUE,
     dx_vocabulary = "ICD10CM",
     pr_vocabulary = "ICD10PCS",
-    snomed_fallback = FALSE,
+    vocabulary_fallback = FALSE,
     link_by = c("visit_id", "date_overlap"),
     discharge_map = NULL,
     default_discharge = "01",
@@ -957,7 +957,7 @@ omop_to_msdrg <- function(
 
   # Optional SNOMED -> ICD10CM reverse-mapping fallback for stays with no source
   # ICD-10-CM concepts.
-  if (isTRUE(snomed_fallback) && "concept_relationship" %in% names(cdm)) {
+  if (isTRUE(vocabulary_fallback) && "concept_relationship" %in% names(cdm)) {
     stays_with_src <- if (nrow(dx_raw) > 0L) unique(omop_id_chr(dx_raw$visit_occurrence_id)) else character()
     if (length(stays_with_src) < dplyr::n_distinct(stays$.visit_key)) {
       dx_snomed <- co_scoped |>
@@ -1479,7 +1479,7 @@ print.omop_msdrg_input <- function(x, ...) {
 #' @param ... Additional arguments passed to [omop_to_msdrg()] (such as
 #'   `cohort`, `cohort_id`, `cohort_match`, `start_date`, `end_date`, `n_max`,
 #'   `principal`, `principal_codes`, `unmatched`, `discharge_map`,
-#'   `default_discharge`, `snomed_fallback`, `link_by`).
+#'   `default_discharge`, `vocabulary_fallback`, `link_by`).
 #' @return A tibble with OMOP stay columns (`claim_id`, optional
 #'   `cohort_definition_id` and `cohort_name`, `visit_occurrence_id`,
 #'   `person_id`, `visit_start_date`, `visit_end_date`, `los`, `age`, `sex`,
