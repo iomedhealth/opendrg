@@ -429,10 +429,9 @@ group(grouper("pso", version = "2025-26-v2"), cdm$uk_cohort, principal = "cohort
 ```
 
 See `dev/omop-cdm-example.R` for a complete runnable script against a live
-PostgreSQL OMOP CDM, and `dev/omop-hot-etl-trial.R` for the hot-patched 2024
-ETL proof-of-concept (99.8% grouped under `principal = "status"`, 57.0%
-surgical DRGs, and $R^2 = 0.624$ against the hospital's official APR-GRD
-weights; full details in `article/wp_opendrg.pdf`).
+PostgreSQL OMOP CDM, and `article/wp_opendrg.pdf` for the full 2024 hospital
+evaluation (99.8% grouped under `principal = "status"`, 57.0% surgical DRGs,
+and $R^2 = 0.624$ against official APR-GRD weights).
 
 #### OMOP CDM entity-relationship & output schema
 
