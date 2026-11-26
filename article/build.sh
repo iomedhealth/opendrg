@@ -5,3 +5,4 @@
 set -e
 cd "$(dirname "$0")"
 tectonic wp_opendrg.tex
+tectonic omop_er_schema.tex
