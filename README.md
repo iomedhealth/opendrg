@@ -86,12 +86,13 @@ imported with one function call.
 
 Also included:
 
-* An **OMOP CDM** adapter and grouper (`omop_to_msdrg()`, `omop_msdrg()`,
-  `omop_msdrg_quality()`) that accepts a `CDMConnector` `cdm_reference`
-  directly, executes lazy read-only `dbplyr` queries inside the site's
-  database, and groups inpatient stays with explicit principal-diagnosis
-  strategies and a data-quality report (see
-  [OMOP CDM (`CDMConnector`)](#omop-cdm-cdmconnector)).
+* **OMOP CDM** adapters and groupers for both **MS-DRG** (`omop_to_msdrg()`,
+  `omop_msdrg()`, `omop_msdrg_quality()`) and **NHS England HRG4+ / PSO**
+  (`omop_to_hrg()`, `omop_hrg()`, `omop_hrg_quality()`) that accept a
+  `CDMConnector` `cdm_reference` or `CohortConstructor` `cohort_table` directly,
+  execute lazy read-only `dbplyr` queries inside the site's database, and group
+  inpatient stays with explicit principal-diagnosis strategies and a
+  data-quality report (see [OMOP CDM (`CDMConnector`)](#omop-cdm-cdmconnector)).
 * An adapter from the Spanish discharge register (CMBD / RAE-CMBD) to the
   MS-DRG input, a reader for its exchange files and a synthetic 1,000-contact
   extract to try them on (see
@@ -412,6 +413,19 @@ cdm$clinical <- CohortConstructor::conceptCohort(
 )
 res <- omop_msdrg(cdm$clinical, principal = "cohort_codelist", cohort_match = "index")
 res[c("cohort_name", "visit_occurrence_id", "principal_code", "drg", "drg_description")]
+```
+
+```r
+# UK / NHS England HRG4+ and PSO directly on an OMOP CDM or CohortConstructor cohort:
+# Reads ICD10 (auto-padding 3-char codes with X) + OPCS4, supports spell-level
+# or visit_detail (FCE) episodes, provider specialty -> TFC, and death/discharge maps.
+res_hrg <- omop_hrg(cdm$uk_cohort, tables = "2025-26-lp", principal = "cohort_codelist")
+res_hrg$episodes[c("cohort_name", "visit_occurrence_id", "fce_hrg", "dominant_procedure", "spell_hrg")]
+omop_hrg_quality(res_hrg)
+
+# Or via the unified grouper interface for HRG4+ and Prescribed Specialised Services (PSO):
+group(grouper("hrg4plus", version = "2025-26-lp"), cdm, episodes = "visit_detail")
+group(grouper("pso", version = "2025-26-v2"), cdm$uk_cohort, principal = "cohort_codelist")
 ```
 
 See `dev/omop-cdm-example.R` for a complete runnable script against a live

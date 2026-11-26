@@ -76,10 +76,10 @@ print.opendrg_grouper <- function(x, ...) {
 #'
 #' @param grouper A grouper created with [grouper()].
 #' @param claims A data frame with one row per claim, a list returned by
-#'   [cmbd_to_msdrg()] or [omop_to_msdrg()], or (for MS-DRG) a `cdm_reference`
-#'   object from `CDMConnector` or a `cohort_table` from `CohortConstructor`.
-#'   See the system-specific documentation (e.g. [msdrg_group()],
-#'   [omop_msdrg()]) for details.
+#'   [cmbd_to_msdrg()], [omop_to_msdrg()] or [omop_to_hrg()], or a
+#'   `cdm_reference` object from `CDMConnector` or a `cohort_table` from
+#'   `CohortConstructor`. See the system-specific documentation (e.g.
+#'   [msdrg_group()], [omop_msdrg()], [omop_hrg()]) for details.
 #' @param diagnoses A data frame with one row per diagnosis code on a claim
 #'   (MS-DRG only; HRG4+ episodes carry their codes in `DIAG_nn`/`OPER_nn`
 #'   columns).
@@ -113,6 +113,18 @@ group.msdrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = 
 group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...,
                               dataset = c("apc", "nac", "em", "acc", "pcc", "ncc", "nrd")) {
   dataset <- rlang::arg_match(dataset)
+  if (inherits(claims, "cdm_reference") || omop_is_cohort_table(claims)) {
+    if (dataset != "apc") {
+      cli::cli_abort("OMOP CDM grouping for HRG4+ currently supports {.code dataset = \"apc\"} only.")
+    }
+    return(omop_hrg(claims, tables = grouper$tables, ...))
+  }
+  if (inherits(claims, "omop_hrg_input")) {
+    if (dataset != "apc") {
+      cli::cli_abort("{.cls omop_hrg_input} objects contain admitted-patient-care episodes ({.code dataset = \"apc\"}).")
+    }
+    return(hrg_group_apc(claims$episodes, tables = grouper$tables))
+  }
   switch(dataset,
     apc = hrg_group_apc(claims, tables = grouper$tables),
     nac = hrg_group_nac(claims, tables = grouper$tables),
@@ -129,6 +141,43 @@ group.hrg_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NU
 group.pso_grouper <- function(grouper, claims, diagnoses = NULL, procedures = NULL, ...,
                               dataset = c("apc", "nac")) {
   dataset <- rlang::arg_match(dataset)
+  if (inherits(claims, "cdm_reference") || omop_is_cohort_table(claims)) {
+    if (dataset != "apc") {
+      cli::cli_abort("OMOP CDM flagging for PSO currently supports {.code dataset = \"apc\"} only.")
+    }
+    dots <- list(...)
+    if (!"provider_code" %in% names(dots)) dots$provider_code <- "PSS"
+    inp <- do.call(omop_to_hrg, c(list(cdm = claims), dots))
+    if (nrow(inp$episodes) == 0L) {
+      out <- list(
+        episodes = dplyr::bind_cols(
+          inp$meta,
+          tibble::tibble(
+            fce_npoc = character(), service_line = character(),
+            service_line_list = character(), dominant_procedure = character(),
+            quality = character(), spell = integer(),
+            spell_npoc = character(), spell_service_line = character()
+          )
+        ),
+        spells = tibble::tibble(
+          spell = integer(), procodet = character(), provspno = character(),
+          spell_npoc = character(), spell_service_line = character()
+        )
+      )
+      attr(out, "quality") <- inp$quality
+      return(out)
+    }
+    out <- pso_flag_apc(inp$episodes, tables = grouper$tables)
+    out$episodes <- dplyr::bind_cols(inp$meta, dplyr::select(out$episodes, -"row"))
+    attr(out, "quality") <- inp$quality
+    return(out)
+  }
+  if (inherits(claims, "omop_hrg_input")) {
+    if (dataset != "apc") {
+      cli::cli_abort("{.cls omop_hrg_input} objects contain admitted-patient-care episodes ({.code dataset = \"apc\"}).")
+    }
+    return(pso_flag_apc(claims$episodes, tables = grouper$tables))
+  }
   switch(dataset,
     apc = pso_flag_apc(claims, tables = grouper$tables),
     nac = pso_flag_nac(claims, tables = grouper$tables)
