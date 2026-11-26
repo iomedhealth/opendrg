@@ -156,7 +156,7 @@ Classification & Versions included & Source of official rules & Verification aga
 \label{fig:architecture}
 \end{figure*}
 
-\section{Background: Three Classifications, One Common Structure}
+\section{Background: Casemix Classifications and One Common Structure}
 
 \subsection{United States: CMS MS-DRGs}
 
@@ -170,9 +170,15 @@ HRG4+ classifies hospital activity across seven NHS care settings: admitted pati
 
 NHS England directly commissions over 150 \emph{prescribed specialised services}---including rare cancers, transplants, and complex neurosurgery---and identifies qualifying hospital stays and outpatient visits using published \emph{identification rules}~\cite{nhse2026pso}. Each rule combines clinical and administrative criteria (diagnoses, procedures, patient age, sex, clinical specialty, admission method, and provider eligibility). Because a single stay may qualify for more than one service line, an official dominance hierarchy selects one primary service line and its corresponding \emph{National Programme of Care} (NPoC) per episode, attendance, and spell.
 
-\subsection{Why one approach handles all three}
+\subsection{Spain: 3M/Solventum APR-GRD and CIE-10-ES}
 
-Despite differences in terminology and national coding systems, all three classifications share the same underlying logic: \emph{ordered decision tables driven by code lists}. Each clinical code maps to named clinical properties; an ordered list of rules checks which combination of properties a stay meets; and a severity or complexity score picks the final split. Because both CMS and NHS England already publish those tables openly, a single transparent, data-driven approach can reproduce all three faithfully.
+Spain's National Health System (\emph{Sistema Nacional de Salud}, SNS) and regional health services (such as Catalonia's CatSalut) classify hospital discharges using \textbf{3M/Solventum's All Patient Refined DRGs (APR-GRD)} for acute inpatient stays---and International Refined DRGs (IR-GRD) for ambulatory surgery and day-hospital contacts---executed centrally by the Ministry of Health and regionally under commercial 3M Core Grouping Software licences~\cite{averill2003drg}. Extending the same DRG lineage as MS-DRG beyond Medicare's older adult population, APR-GRD adds finer neonatal and paediatric groups and attaches two separate four-level subclasses to every base DRG: \emph{Severity of Illness} (SOI, levels 1--4) for resource use and \emph{Risk of Mortality} (ROM, levels 1--4) for clinical quality benchmarking.
+
+Unlike CMS MS-DRG and NHS England HRG4+, APR-GRD's grouping tables and decision rules are proprietary and unpublished, so they cannot be openly re-implemented. Since 2016, however, Spanish hospitals have coded their national discharge register (RAE-CMBD, Royal Decree 69/2015) in \textbf{CIE-10-ES}---the official Spanish translation of US ICD-10-CM and ICD-10-PCS. Because the underlying clinical codes are identical, Spanish inpatient records can be grouped directly with \textbf{opendrg}'s open MS-DRG engine inside the hospital's own database, providing a portable, auditable research casemix without vendor software (evaluated across 35{,}312 Spanish hospital stays in Section~\ref{sec:omop}).
+
+\subsection{Why one open approach works across systems}
+
+Despite differences in terminology and national coding systems, all published casemix groupers share the same underlying logic: \emph{ordered decision tables driven by code lists}. Each clinical code maps to named clinical properties; an ordered list of rules checks which combination of properties a stay meets; and a severity or complexity score picks the final split. Because both CMS and NHS England already publish those tables openly, a single transparent, data-driven engine can reproduce MS-DRG, HRG4+, and Prescribed Specialised Services faithfully---and extend immediately to countries such as Spain whose hospitals code in translations of ICD-10-CM/PCS.
 
 \section{CMS MS-DRG: Official Rules as Data}
 \label{sec:msdrg_data}
