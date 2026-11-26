@@ -1,5 +1,5 @@
 % IOMED Article
-% LaTeX Template — opendrg Technical Whitepaper
+% LaTeX Template — opendrg Whitepaper (IMRaD Structure)
 %
 % Build: tectonic wp_opendrg.tex
 %
@@ -74,7 +74,11 @@
 \newcommand{\keywordname}{Keywords}
 
 \Abstract{
-Hospital casemix groupers turn the coded record of a patient's stay---diagnoses, procedures, age, sex, and how the patient was admitted and discharged---into standardised clinical and costing categories. These categories underpin hospital reimbursement, benchmarking, and health-economic research: Medicare Severity Diagnosis Related Groups (MS-DRGs) in the United States, and Healthcare Resource Groups (HRG4+) and Prescribed Specialised Services (PSS) flags in England. Yet the official software for assigning them is distributed as closed, operating-system-specific programs (Windows desktop applications, mainframe modules, or specialised Java libraries). In practice, this makes casemix grouping difficult to include in routine research workflows, incompatible with federated hospital data networks where patient records cannot be exported, and impossible for analysts to audit. This paper introduces \textbf{opendrg}, an open-source R package that reproduces all three classifications directly from the official rule tables published by CMS and NHS England. Rather than hard-coding clinical rules, \textbf{opendrg} reads the agencies' published tables as data and evaluates them in the exact order specified by each agency. Checked record-by-record against CMS's official grouper on its 9{,}864-stay test database, \textbf{opendrg} achieves \textbf{100\% agreement on final DRG, initial DRG, Major Diagnostic Category, medical/surgical class, severity level and return code across three consecutive releases (v43.0, v43.1 and v44.0)}. Against NHS England's official test data, it achieves \textbf{100\% agreement across all seven HRG4+ care settings} (2{,}250 records, including 750 admitted episodes and 477 spells) for both the 2024/25 National Costs and 2025/26 Local Payment designs, and \textbf{100\% agreement on the Prescribed Specialised Services sample data} (300 inpatient episodes, 141 spells and 200 outpatient attendances). To support real-world evidence and health-economic studies, \textbf{opendrg} connects directly to hospital databases formatted in the OMOP Common Data Model, running read-only without moving patient-level records and producing an automated data-quality report. Tested across seven consecutive years (2018--2024; 35{,}312 inpatient stays) in a Spanish specialist hospital's OMOP database, \textbf{opendrg} grouped \textbf{99.8\%--100.0\% of stays every year} (53\%--59\% surgical) with complete OMOP mapping, explained \textbf{75\%--85\% of the variation ($R^2 = 0.75\text{--}0.85$; 5-fold cross-validated $R^2 = 0.72\text{--}0.81$; Spearman $\rho = 0.78\text{--}0.86$)} in the hospital's official 3M APR-GRD cost weights, reproduced annual hospital Case-Mix Index within $\pm 0.2\%$, and captured 80\%--90\% of the length-of-stay explanatory power of full four-tier APR-GRD ($R^2 = 0.32\text{--}0.38$ vs.\ $0.27\text{--}0.32$ for base APR-GRD and $0.36\text{--}0.43$ for severity-split APR-GRD).
+\textbf{Background:} Hospital casemix groupers turn coded patient stays---diagnoses, procedures, demographics, and admission and discharge details---into standardised clinical and costing categories such as Medicare Severity Diagnosis Related Groups (MS-DRGs) in the United States and Healthcare Resource Groups (HRG4+) and Prescribed Specialised Services (PSS) flags in England. Because official groupers are distributed as closed, platform-restricted programs (Windows desktop applications, mainframe modules, or specialised Java libraries), they are difficult to embed in analytical workflows, incompatible with federated hospital databases where patient records cannot be exported, and opaque to researchers.
+\textbf{Objective:} We developed \textbf{opendrg}, an open-source R package that reproduces MS-DRG, HRG4+, and PSS directly from official published rule tables, connects read-only to OMOP Common Data Model (CDM) databases, and evaluates cross-country portability on live European hospital data.
+\textbf{Methods:} Official rule tables published by CMS and NHS England are imported without hand-coding clinical rules and evaluated in each agency's exact order. We verified MS-DRG against CMS's official software on all 9{,}864 \texttt{TESTDB} stays (v43.0, v43.1, v44.0), HRG4+ across all seven NHS care settings (2{,}250 official test records; 2024/25 National Costs and 2025/26 Local Payment), and PSS on all 500 official sample records. We further evaluated OMOP portability read-only across seven years (2018--2024; 35{,}312 inpatient stays) in a Spanish specialist hospital's OMOP CDM against its official 3M APR-GRD cost weights and length of stay.
+\textbf{Results:} \textbf{opendrg} achieved \textbf{100\% record-by-record agreement} with CMS's official software across all three MS-DRG versions and \textbf{100\% agreement} with NHS England's expected outputs across all seven HRG4+ datasets and both PSS versions. On the live Spanish OMOP CDM, complete OMOP mapping grouped \textbf{99.8\%--100.0\% of stays every year} (53\%--59\% surgical), aligned 90\%--100\% of patients on major clinical categories with 3M APR-GRD, explained \textbf{72\%--81\% of out-of-sample cost-weight variation} (Spearman $\rho = 0.78\text{--}0.86$), and matched annual hospital Case-Mix Index within $\pm 0.2\%$.
+\textbf{Conclusion:} Treating published official rule tables as executable data delivers portable, auditable, 100\%-verified MS-DRG, HRG4+, and PSS grouping anywhere R runs, including directly inside federated OMOP hospital databases.
 }
 
 %----------------------------------------------------------------------------------------
@@ -89,30 +93,53 @@ Hospital casemix groupers turn the coded record of a patient's stay---diagnoses,
 \tableofcontents
 
 %----------------------------------------------------------------------------------------
-%	ARTICLE CONTENTS
+%	1. BACKGROUND
 %----------------------------------------------------------------------------------------
 
-\section{Executive Overview}
+\section{Background}
 
-Diagnosis-related groups (DRGs) were introduced at Yale in the late 1970s to summarise hospital activity into a manageable set of clinically meaningful, resource-homogeneous patient groups~\cite{fetter1980drg}. Four decades later, their descendants form the financial and analytical backbone of modern health systems: US Medicare pays for millions of hospital stays each year through \textbf{MS-DRGs} assigned by the Centers for Medicare \& Medicaid Services (CMS)~\cite{cms2026msdrg}, while NHS England costs and reimburses inpatient, outpatient, emergency, and critical-care activity through \textbf{HRG4+} groups maintained by the National Casemix Office~\cite{nhse2025hrg}. Beyond hospital payment, casemix groups are essential to health economics and outcomes research (HEOR), hospital benchmarking, risk adjustment, and costing in real-world evidence studies.
+Diagnosis-related groups (DRGs) were introduced at Yale in the late 1970s to summarise hospital activity into a manageable number of clinically coherent, resource-homogeneous patient groups~\cite{fetter1980drg}. Four decades later, their descendants underpin hospital financing, performance benchmarking, risk adjustment, and health economics and outcomes research (HEOR) across most developed health systems.
 
-Despite their importance, the official software tools that assign these groups have remained closed, platform-restricted black boxes:
-
+Despite their central role, the official software tools that assign these classifications have remained closed, platform-restricted black boxes:
 \begin{itemize}[leftmargin=*,nosep]
-    \item \textbf{CMS MS-DRG} is distributed as mainframe software, a Windows desktop utility, and a Java library backed by proprietary binary files. Embedding it in standard statistical environments such as R or Python requires custom technical wrappers or manually exporting claims to external software.
-    \item \textbf{NHS England HRG4+} is distributed exclusively as a Windows desktop program that reads encrypted reference files. Costing and research teams working on macOS, Linux, or secure cloud research environments cannot run it at all.
-    \item \textbf{Incompatible with federated research.} Both tools assume that patient-level records are exported to a local file and fed into a standalone program. In modern multi-centre research networks built on the OMOP Common Data Model (such as OHDSI, DARWIN~EU, and EHDEN), patient-level records never leave the hospital; analytical code travels to the database and only aggregate summaries return.
+    \item \textbf{CMS MS-DRG} is distributed as mainframe software, a Windows desktop utility, and a Java library backed by proprietary binary files. Embedding it in standard statistical workflows such as R or Python requires custom technical wrappers or manual file exports.
+    \item \textbf{NHS England HRG4+} is distributed exclusively as a Windows desktop program reading encrypted reference files. Costing and research teams working on macOS, Linux, or secure cloud research environments cannot run it at all.
+    \item \textbf{Incompatible with federated research.} Both tools assume patient-level records are exported to a local file and fed into standalone software. In modern multi-centre research networks built on the OMOP Common Data Model~\cite{ohdsi2024omop} (OHDSI, DARWIN~EU, EHDEN), patient-level records never leave the hospital; analytical code travels to the database and only aggregate results return.
 \end{itemize}
 
-\textbf{opendrg}~\cite{opendrg2026} solves these limitations by recognising a simple fact: both CMS and NHS England already \emph{publish their complete grouping rules as structured data tables}. Instead of translating thousands of clinical rules by hand, \textbf{opendrg} imports those published tables directly and applies them with a small, transparent, thoroughly verified R~\cite{rcore2026} engine (Figure~\ref{fig:architecture}). Three principles guide its design:
+\subsection{United States: CMS MS-DRGs}
+
+An MS-DRG is assigned to an acute inpatient stay from its principal diagnosis (main reason for admission), up to 24 secondary diagnoses with present-on-admission (POA) indicators, up to 25 procedures (ICD-10-CM and ICD-10-PCS), sex, and discharge status~\cite{cms2026msdrg,cms2026msdrgmanual}. Grouping screens first for resource-intensive \emph{pre-MDC} care (organ transplants, ECMO, tracheostomy with prolonged ventilation), assigns one of 25 body-system chapters (\emph{Major Diagnostic Categories}, MDCs) from the principal diagnosis, partitions stays into surgical versus medical classes, and splits by complication severity---with a Major Complication or Comorbidity (\emph{MCC}), with a Complication or Comorbidity (\emph{CC}), or without CC/MCC---after removing comorbidities redundant with the principal diagnosis. Unrelated operating-room procedures reroute to DRGs 981--989, and hospital-acquired conditions (HACs) not present on admission are stripped from severity in a second pass~\cite{cms2005hac}. Version 44.0 (FY 2027) defines 766 MS-DRGs plus two ungroupable codes (998 and 999).
+
+\subsection{England: NHS England HRG4+ and Prescribed Specialised Services}
+
+NHS England prices and costs activity across seven care settings---admitted patient care, outpatient (non-admitted) consultations, emergency medicine, adult, paediatric and neonatal critical care, and renal dialysis---through \textbf{HRG4+}~\cite{nhse2025hrg,nhsd2020casemix}. For admitted care, HRG4+ assigns a \emph{core} HRG to each \emph{finished consultant episode} (FCE, the period under one consultant) and to the overall hospital \emph{spell}, plus \emph{unbundled} HRGs for separately priced components (chemotherapy, radiotherapy, critical care, rehabilitation, specialist palliative care, complex imaging). Using ICD-10 diagnoses and OPCS-4 procedures, HRG4+ picks the dominant procedure from a national hierarchy, determines an HRG \emph{root}, and splits that root by complication-and-comorbidity (CC) score, age, or length of stay. The 2024/25 National Costs release contains 2{,}900 HRGs.
+
+Alongside HRG4+, NHS England directly commissions over 150 \textbf{Prescribed Specialised Services} (rare cancers, transplantation, complex neurosurgery) and identifies qualifying episodes, outpatient attendances, and spells via published \emph{identification rules} (the PSO tool)~\cite{nhse2026pso}, assigning a dominant service line and its \emph{National Programme of Care} (NPoC).
+
+\subsection{Spain: 3M/Solventum APR-GRD and CIE-10-ES}
+
+Spain's National Health System (\emph{Sistema Nacional de Salud}, SNS) and regional health services (such as Catalonia's CatSalut) classify hospital discharges using \textbf{3M/Solventum's All Patient Refined DRGs (APR-GRD)} for acute inpatient stays---and International Refined DRGs (IR-GRD) for ambulatory surgery and day-hospital activity---run centrally by the Ministry of Health and regionally under commercial 3M Core Grouping Software licences~\cite{averill2003drg}. Extending the same DRG lineage as MS-DRG beyond Medicare's older adult population, APR-GRD adds finer neonatal and paediatric groups and attaches two four-level subclasses to every base DRG: \emph{Severity of Illness} (SOI, 1--4) for resource use and \emph{Risk of Mortality} (ROM, 1--4) for quality benchmarking.
+
+Unlike MS-DRG and HRG4+, APR-GRD's grouping tables are proprietary and unpublished, so they cannot be openly re-implemented. Since 2016, however, Spanish hospitals have coded the national discharge register (RAE-CMBD, Royal Decree 69/2015) in \textbf{CIE-10-ES}---the official Spanish translation of US ICD-10-CM and ICD-10-PCS. Because the underlying clinical codes are identical, Spanish inpatient data can be grouped directly with an open MS-DRG engine inside the hospital's own database, making Spain an ideal real-world test of cross-country portability.
+
+\subsection{Shared structure across published groupers}
+
+Despite national differences in coding and terminology, MS-DRG, HRG4+, and PSO share the same underlying structure: \emph{ordered decision tables driven by code lists}. Each clinical code maps to clinical properties; ordered rules check which combination of properties a stay meets; and a severity or complexity score selects the final split. Because both CMS and NHS England already publish those tables openly, one transparent, data-driven architecture can reproduce all three faithfully.
+
+%----------------------------------------------------------------------------------------
+%	2. OBJECTIVE
+%----------------------------------------------------------------------------------------
+
+\section{Objective}
+
+The goal of \textbf{opendrg}~\cite{opendrg2026} is to turn hospital casemix grouping from a platform-bound black box into a transparent, verifiable, and portable R~\cite{rcore2026} package (Figure~\ref{fig:architecture}, Table~\ref{tab:headline}) with three specific objectives:
 
 \begin{enumerate}[leftmargin=*,nosep]
-    \item \textbf{Rules live in official tables, not hand-written code.} Every diagnosis list, procedure hierarchy, complication exclusion, and severity split comes straight from the agency's release. Updating to a new fiscal year requires importing the new tables, without rewriting the grouper logic (Section~\ref{sec:msdrg_data}).
-    \item \textbf{Built for modern analytical and database workflows.} Inputs and outputs are standard tables, allowing casemix grouping to sit seamlessly inside reproducible R analyses and run directly against hospital OMOP databases (Section~\ref{sec:omop}).
-    \item \textbf{Verified against official software outputs, not prose manuals.} Every grouper is checked record-by-record against the agencies' own reference software and official test datasets, guaranteeing identical results rather than approximations (Section~\ref{sec:verification}).
+    \item \textbf{Reproduce official US and English classifications from published tables.} Implement CMS MS-DRG, NHS England HRG4+ (all seven care settings), and Prescribed Specialised Services (PSO) strictly from the agencies' published rule tables---with no hand-written clinical rules---and verify 100\% agreement against official software outputs.
+    \item \textbf{Enable read-only federated grouping on OMOP CDM.} Provide unified OMOP adapters for both MS-DRG and HRG4+/PSO through \texttt{CDMConnector}~\cite{black2025cdmconnector} and \texttt{CohortConstructor}, keeping patient-level records inside the hospital database and reporting data-quality gaps explicitly.
+    \item \textbf{Demonstrate real-world cross-country portability.} Evaluate \textbf{opendrg} read-only on seven years of live inpatient stays from a Spanish specialist hospital's OMOP database, benchmarking its open MS-DRG output directly against the hospital's official 3M APR-GRD classifications, cost weights, and lengths of stay.
 \end{enumerate}
-
-Table~\ref{tab:headline} summarises the classifications currently bundled and verified in \textbf{opendrg}. Sections~\ref{sec:hrg} and~\ref{sec:pso} describe the English HRG4+ and Prescribed Specialised Services classifications, and Section~\ref{sec:omop} details direct grouping on OMOP hospital databases and our evaluation on a live hospital dataset.
 
 \begin{table*}[!t]\centering
 \caption{Overview of the casemix classifications implemented and verified in \textbf{opendrg} (November 2026).}
@@ -152,40 +179,22 @@ Classification & Versions included & Source of official rules & Verification aga
 \node[below=0.35cm of eval, text width=3.1cm, align=center] {transparent tabular rules, no proprietary binaries};
 \node[below=0.35cm of res, text width=3.1cm, align=center] {100\% verified against official CMS \& NHS England test data};
 \end{tikzpicture}}
-\caption{\textbf{How \texttt{opendrg} works.} All grouping rules reside in versioned official tables imported directly from CMS or NHS England. The grouper looks up each stay's codes, builds a clinical profile, and evaluates the agency's decision rules in the exact official order.}
+\caption{\textbf{Common architecture of \texttt{opendrg}.} All grouping rules reside in versioned official tables imported directly from CMS or NHS England. The engine looks up each stay's codes, builds a clinical profile, and evaluates the agency's decision rules in exact official order.}
 \label{fig:architecture}
 \end{figure*}
 
-\section{Background: Casemix Classifications and One Common Structure}
+%----------------------------------------------------------------------------------------
+%	3. MATERIALS AND METHODS
+%----------------------------------------------------------------------------------------
 
-\subsection{United States: CMS MS-DRGs}
+\section{Materials and Methods}
+\label{sec:methods}
 
-An MS-DRG is assigned to an acute inpatient stay from its principal diagnosis (the main reason for admission), up to 24 secondary diagnoses with present-on-admission (POA) indicators, up to 25 procedures (coded in ICD-10-CM and ICD-10-PCS), sex, and discharge status~\cite{cms2026msdrgmanual}. Grouping proceeds in a fixed clinical sequence: first, a \emph{pre-MDC} screen identifies resource-intensive care such as organ transplants, ECMO, or tracheostomy with prolonged ventilation; next, the principal diagnosis assigns one of 25 body-system chapters (\emph{Major Diagnostic Categories}, or MDCs); operating-room procedures then divide stays into surgical versus medical classes; and finally, surviving secondary diagnoses determine the severity tier---with a Major Complication or Comorbidity (\emph{MCC}), with a Complication or Comorbidity (\emph{CC}), or without CC/MCC---after removing comorbidities that are clinically redundant with the principal diagnosis. Two additional rules refine assignment: operating-room procedures unrelated to the principal diagnosis are routed to dedicated groups (DRGs 981--989), and conditions acquired during the hospital stay (hospital-acquired conditions, HACs, flagged as not present on admission) are stripped from severity in a second pass so hospitals are not paid more for preventable complications~\cite{cms2005hac}. Version 44.0 (FY 2027) defines 766 MS-DRGs plus two ungroupable codes (998 and 999).
+\subsection{Published rule tables}
 
-\subsection{England: NHS England HRG4+}
+A core design principle of \textbf{opendrg} is separating \emph{rules} (versioned official data tables) from \emph{evaluation} (a small, unchanging engine). Updating to a new fiscal year requires importing the agency's newly published tables with one function call.
 
-HRG4+ classifies hospital activity across seven NHS care settings: admitted patient care, outpatient (non-admitted) consultations, emergency medicine, adult, paediatric and neonatal critical care, and renal dialysis~\cite{nhse2025hrg,nhsd2020casemix}. For admitted care, it assigns a \emph{core} HRG to each \emph{finished consultant episode} (FCE---the portion of a stay under one consultant) and to the overall hospital \emph{spell}, alongside \emph{unbundled} HRGs for high-cost components priced separately (such as chemotherapy, radiotherapy, critical care, specialist palliative care, rehabilitation, and complex imaging). Using ICD-10 diagnoses and OPCS-4 procedures, HRG4+ selects the most significant (\emph{dominant}) procedure via a national hierarchy, determines an HRG \emph{root}, and splits that root by complication-and-comorbidity score, age, or length of stay. The 2024/25 National Costs release contains 2{,}900 distinct HRGs.
-
-\subsection{England: Prescribed Specialised Services}
-
-NHS England directly commissions over 150 \emph{prescribed specialised services}---including rare cancers, transplants, and complex neurosurgery---and identifies qualifying hospital stays and outpatient visits using published \emph{identification rules}~\cite{nhse2026pso}. Each rule combines clinical and administrative criteria (diagnoses, procedures, patient age, sex, clinical specialty, admission method, and provider eligibility). Because a single stay may qualify for more than one service line, an official dominance hierarchy selects one primary service line and its corresponding \emph{National Programme of Care} (NPoC) per episode, attendance, and spell.
-
-\subsection{Spain: 3M/Solventum APR-GRD and CIE-10-ES}
-
-Spain's National Health System (\emph{Sistema Nacional de Salud}, SNS) and regional health services (such as Catalonia's CatSalut) classify hospital discharges using \textbf{3M/Solventum's All Patient Refined DRGs (APR-GRD)} for acute inpatient stays---and International Refined DRGs (IR-GRD) for ambulatory surgery and day-hospital contacts---executed centrally by the Ministry of Health and regionally under commercial 3M Core Grouping Software licences~\cite{averill2003drg}. Extending the same DRG lineage as MS-DRG beyond Medicare's older adult population, APR-GRD adds finer neonatal and paediatric groups and attaches two separate four-level subclasses to every base DRG: \emph{Severity of Illness} (SOI, levels 1--4) for resource use and \emph{Risk of Mortality} (ROM, levels 1--4) for clinical quality benchmarking.
-
-Unlike CMS MS-DRG and NHS England HRG4+, APR-GRD's grouping tables and decision rules are proprietary and unpublished, so they cannot be openly re-implemented. Since 2016, however, Spanish hospitals have coded their national discharge register (RAE-CMBD, Royal Decree 69/2015) in \textbf{CIE-10-ES}---the official Spanish translation of US ICD-10-CM and ICD-10-PCS. Because the underlying clinical codes are identical, Spanish inpatient records can be grouped directly with \textbf{opendrg}'s open MS-DRG engine inside the hospital's own database, providing a portable, auditable research casemix without vendor software (evaluated across 35{,}312 Spanish hospital stays in Section~\ref{sec:omop}).
-
-\subsection{Why one open approach works across systems}
-
-Despite differences in terminology and national coding systems, all published casemix groupers share the same underlying logic: \emph{ordered decision tables driven by code lists}. Each clinical code maps to named clinical properties; an ordered list of rules checks which combination of properties a stay meets; and a severity or complexity score picks the final split. Because both CMS and NHS England already publish those tables openly, a single transparent, data-driven engine can reproduce MS-DRG, HRG4+, and Prescribed Specialised Services faithfully---and extend immediately to countries such as Spain whose hospitals code in translations of ICD-10-CM/PCS.
-
-\section{CMS MS-DRG: Official Rules as Data}
-\label{sec:msdrg_data}
-
-\subsection{What CMS publishes}
-
-Alongside its mainframe and desktop software, CMS publishes a set of nine plain-text tables containing the complete MS-DRG classification logic (Table~\ref{tab:flatfiles}). Cross-checking these tables directly against the binary files inside CMS's official Java grouper confirmed that all 794 grouping rules, 8{,}271 procedure-cluster entries, and 172{,}853 complication-exclusion pairs match identically in content and order. Only the 14 hospital-acquired-condition eligibility rules appear exclusively inside CMS's binary release; \textbf{opendrg} includes those 14 documented rules alongside each imported version.
+\textbf{CMS MS-DRG tables.} Alongside its software, CMS publishes nine plain-text tables defining the complete MS-DRG logic (Table~\ref{tab:flatfiles}, $\approx$170~KB compressed per version). Cross-checking these tables against CMS's binary release confirmed identical content and order across all 794 DRG rules, 8{,}271 procedure clusters, and 172{,}853 exclusion pairs. Only the 14 hospital-acquired-condition eligibility rules appear exclusively in CMS's binary files and are included as a documented per-version supplement.
 
 \begin{table}[!t]\centering
 \caption{Official CMS MS-DRG v44.0 rule tables bundled in \textbf{opendrg} ($\approx$170~KB compressed per version).}
@@ -210,90 +219,10 @@ HAC rules & Eligibility criteria for the 14 hospital-acquired conditions & 14 \\
 \end{tabular}
 \end{table}
 
-\subsection{How the grouping rules are written}
-
-Every row of CMS's \texttt{DRGLOGIC} table defines one candidate DRG as a concise yes/no condition over diagnosis groups, procedure groups, severity levels, and patient characteristics (such as whether the patient was discharged alive, died, or left against medical advice, or had bilateral joint procedures or multiple significant trauma sites). For example:
-
-\begin{itemize}[leftmargin=*,nosep]
-    \item \textbf{DRG 146 (Ear, nose, mouth and throat malignancy with MCC):} principal diagnosis in category \texttt{dxc0306} \emph{and} a major complication (\texttt{MCC}) present.
-    \item \textbf{DRG 3 (ECMO or tracheostomy with mechanical ventilation $>$96 hours):} ECMO performed, \emph{or} tracheostomy with prolonged ventilation (unless the principal diagnosis is a mouth/lip disorder) plus an operating-room procedure.
-    \item \textbf{DRG 461 (Bilateral or multiple major joint procedures of lower extremity with MCC):} two distinct lower-limb joint replacements (\texttt{BILATERAL}) \emph{and} an \texttt{MCC}.
-\end{itemize}
-
-Within each body-system chapter, rules are checked from top to bottom and the first matching rule wins. Special reroute rows transfer complex stays to dedicated chapters (multiple significant trauma, HIV, or operating-room procedures unrelated to the principal diagnosis), while edit rows flag invalid or missing principal diagnoses as ungroupable (DRG~999).
-
-\subsection{How a stay is grouped}
-\label{sec:engine}
-
-\textbf{opendrg} reproduces every step of CMS's official grouping sequence (Figure~\ref{fig:architecture}):
-
-\begin{enumerate}[leftmargin=*,nosep]
-    \item \textbf{Code lookup.} Every ICD-10-CM diagnosis and ICD-10-PCS procedure is matched to its CMS clinical group, body-system chapter, and hospital-acquired-condition list. Sex-specific diagnoses (73 codes that map to either male or female reproductive chapters) are resolved using the patient's sex.
-    \item \textbf{Procedure clusters.} When a stay contains all component codes of a CMS procedure cluster (for example, a combined spinal or cardiovascular intervention), the cluster fires as a single composite procedure and suppresses its individual parts where CMS specifies.
-    \item \textbf{Complication exclusions.} Secondary diagnoses that are clinically inherent to the principal diagnosis (from CMS's 172{,}853-row exclusion list), as well as conditions that count as an MCC only when a patient survives the stay, are excluded from raising severity.
-    \item \textbf{Rule-specific severity.} For each candidate DRG rule, severity (\emph{MCC}, \emph{CC}, or neither) is computed after applying any rule-specific exclusions.
-    \item \textbf{Ordered assignment.} Stays pass first through pre-MDC rules, then through the chapter determined by their principal diagnosis, following reroutes (trauma, HIV, unrelated surgery) in CMS's exact order.
-    \item \textbf{Hospital-acquired condition (HAC) check.} Secondary diagnoses on CMS's 14 HAC lists that were not present on admission are tested against their HAC criteria. Qualifying conditions are removed from severity and the stay is regrouped, producing both an \emph{initial} DRG and a \emph{final} DRG.
-\end{enumerate}
-
-For analysts using R, grouping takes just three lines of code:
-
-\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=R]
-library(opendrg)
-g   <- grouper("msdrg", version = "44.0")
-out <- group(g, claims, diagnoses, procedures)
-# Returns: drg, initial_drg, base_drg, mdc, med_surg,
-#          severity, return_code, drg_description
-\end{lstlisting}
-\end{minipage}
-
-\section{Verification Against Official Software}
-\label{sec:verification}
-
-\subsection{Testing against the CMS reference grouper}
-
-Written manuals describe clinical intent, whereas hospital payment and research reproducibility depend on matching the exact behaviour of the official software. We therefore verified \textbf{opendrg} directly against CMS's own Java grouper across CMS's entire official 9{,}864-stay test database (\texttt{TESTDB}). Before comparing against \textbf{opendrg}, we confirmed that our test setup reproduced CMS's own embedded test expectations on all 9{,}864 stays without a single discrepancy.
-
-\subsection{MS-DRG agreement results}
+\textbf{NHS England HRG4+ tables.} With every HRG4+ release, NHS England publishes a \emph{Code to Group} Excel workbook under the Open Government Licence~\cite{nhse2025hrg,ogl3}. Rather than mere prose documentation, the workbook contains the complete machine-readable rule tables powering the Windows grouper (Table~\ref{tab:hrgtables}, $\approx$272~KB compressed): ICD-10 and OPCS-4 mappings, clinical subchapters, combination procedures (primary operation plus site/approach qualifiers), the national procedure hierarchy, complication-and-comorbidity scores, programme budgeting categories, and formal condition flags governing every HRG root and split. The handful of decision trees published only as PDF flowcharts in the Chapter Summaries (emergency-medicine hierarchies and paediatric/neonatal critical-care trees) were transcribed into versioned reference tables bundled alongside the workbook tables.
 
 \begin{table}[!t]\centering
-\caption{Agreement of \textbf{opendrg} with CMS's official grouper on all 9{,}864 TESTDB stays, per bundled version.}
-\label{tab:results}
-\scriptsize
-\setlength{\tabcolsep}{3.0pt}
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Output & v43.0 & v43.1 & v44.0 \\
-\midrule
-Final DRG & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
-Initial DRG (before HAC) & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
-MDC & 100\% & 100\% & 100\% \\
-Medical / surgical class & 100\% & 100\% & 100\% \\
-Severity (MCC / CC / none) & 100\% & 100\% & 100\% \\
-Return code & 100\% & 100\% & 100\% \\
-\midrule
-Stays changed by the HAC check & \multicolumn{3}{c}{73 (all matched)} \\
-Unknown hospital POA status (RC 10) & \multicolumn{3}{c}{73 (all matched)} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:results} shows the results. Across all three bundled versions (v43.0, v43.1, and v44.0), \textbf{opendrg} agrees with CMS's official software on \textbf{100\% of stays and every output field}. For v44.0 this covers 9{,}720 grouped stays across 759 distinct DRGs, 48 stays rejected for an external-cause principal diagnosis, 96 invalid principal diagnoses, 101 stays with diagnoses invalid as principal discharge diagnosis (DRG~998), and all 73 stays whose final DRG shifts because of a hospital-acquired condition---including the alternative rejection code CMS produces when a hospital's POA-reporting status is unknown.
-
-Crucially, 100\% agreement for v43.0 and v43.1 was achieved on the very first run after importing their official tables, with zero changes to the grouping engine---confirming that future annual releases can be added cleanly and reliably. A small number of rare paths not represented in CMS's test file (such as sex-diagnosis conflicts and multi-vessel stent counts) were implemented directly from CMS's specification and are documented as open test-coverage items.
-
-\subsection{Quality assurance and speed}
-
-Over 1{,}100 automated checks verify all three classifications, their rule tables, input validation, and the Spanish and OMOP data adapters continuously across Windows, macOS, and Linux. On a standard laptop, \textbf{opendrg} groups roughly \textbf{1{,}200 stays per second} for MS-DRG---fast enough to classify an entire hospital's annual inpatient discharges in a few seconds.
-
-\section{NHS England HRG4+: Same Pattern, Official Workbooks}
-\label{sec:hrg}
-
-{\sloppy With every HRG4+ release, NHS England publishes a \emph{Code to Group} Excel workbook under the Open Government Licence~\cite{nhse2025hrg,ogl3}. Closer inspection shows that this workbook is not merely descriptive documentation: it contains the complete machine-readable rule set behind the Windows grouper (Table~\ref{tab:hrgtables}). It lists every ICD-10 and OPCS-4 code, the clinical subchapters each code triggers, every combination procedure (such as a primary operation paired with an anatomical site or surgical approach code), the national procedure hierarchy used to choose the dominant procedure, complication-and-comorbidity score tables, programme budgeting categories, and every condition flag governing how an HRG root splits by complexity, age, or length of stay.\par}
-
-\begin{table}[!t]\centering
-\caption{HRG4+ 2024/25 National Costs rule tables imported from NHS England's \emph{Code to Group} workbook ($\approx$272~KB compressed).}
+\caption{Official HRG4+ 2024/25 National Costs rule tables imported from NHS England's \emph{Code to Group} workbook ($\approx$272~KB compressed).}
 \label{tab:hrgtables}
 \scriptsize
 \setlength{\tabcolsep}{3.5pt}
@@ -314,51 +243,45 @@ Table & Clinical content & Rows \\
 \end{tabular}
 \end{table}
 
-NHS England also publishes official test datasets with expected outputs for all seven care settings. Using these alongside NHS England's User Manual and Chapter Summaries, we implemented the complete HRG4+ workflow: validating each record, forming procedure combinations, extracting unbundled HRGs, selecting the dominant procedure from the national hierarchy, assigning the core HRG under NHS precedence (burns $>$ multiple trauma $>$ procedure $>$ global exception $>$ diagnosis), applying complexity splits, and grouping hospital spells from their dominant episode and combined clinical codes. The handful of decision trees that NHS England publishes only as PDF flowcharts (emergency-medicine hierarchies and paediatric/neonatal critical-care trees) were transcribed into versioned tables bundled with the package.
+\textbf{NHS England PSO tables.} NHS England's \emph{Guide to Identification Rules} workbook~\cite{nhse2026pso} enumerates all 214 specialised service lines, 261 identification rules (812 rule conditions over 629 code and eligibility lists), dominance hierarchies, and NPoC mappings; \textbf{opendrg} imports them into a single 42~KB table set.
 
-\begin{table}[!t]\centering
-\caption{Agreement of \textbf{opendrg} with NHS England's expected results on the official HRG4+ test data (all seven datasets), per bundled version.}
-\label{tab:hrgresults}
-\scriptsize
-\setlength{\tabcolsep}{3.0pt}
-\begin{tabular}{@{}lcc@{}}
-\toprule
-Dataset / Output & 2024/25 NC & 2025/26 LP \\
-\midrule
-Admitted patient care (FCE HRG) & 750 / 750 & 750 / 750 \\
-\quad Method, dom.\ proc., unbundled, PBC, dur., quality & 100\% & 100\% \\
-Admitted patient care (spell HRG) & 477 / 477 & 477 / 477 \\
-\quad Method, dom.\ proc., diag., LOS, count, report flag & 100\% & 100\% \\
-\midrule
-Non-admitted consultations (HRG, method, dom., unb.) & 200 / 200 & 200 / 200 \\
-Emergency medicine (EM HRG) & 300 / 300 & 300 / 300 \\
-Adult critical care (HRG, CC days, warning flag) & 250 / 250 & 250 / 250 \\
-Paediatric critical care (HRG per day) & 250 / 250 & 250 / 250 \\
-Neonatal critical care (HRG per day) & 300 / 300 & 300 / 300 \\
-Renal dialysis (NRD HRG) & 200 / 200 & 200 / 200 \\
-\midrule
-All 7 datasets (every published field) & \multicolumn{2}{c}{2{,}250 / 2{,}250 (100\%)} \\
-\bottomrule
-\end{tabular}
-\end{table}
+\subsection{Grouping engines: MS-DRG and HRG4+ side by side}
 
-Table~\ref{tab:hrgresults} summarises the verification: \textbf{every output field of all 2{,}250 test records matches NHS England's expected results} for both the 2024/25 National Costs release and the 2025/26 Local Payment Grouper~\cite{nhse2025lpg} (NHS England postponed the 2026/27 release). Grouping currently processes roughly 100 episodes per second---already fast enough for typical hospital cohorts, with further speed improvements planned.
+Both engines follow the same transparent pipeline (Figure~\ref{fig:architecture}) while respecting each system's exact official rules.
 
-\section{Prescribed Specialised Services: Rules as Lists}
-\label{sec:pso}
+\textbf{CMS MS-DRG workflow.} Every \texttt{DRGLOGIC} row expresses one candidate DRG as a yes/no condition over clinical groups, severity, and stay characteristics---for example, \emph{ENT malignancy with MCC} (DRG~146), \emph{ECMO or tracheostomy with prolonged mechanical ventilation} (DRG~3), or \emph{bilateral lower-limb joint replacement with MCC} (DRG~461). Grouping proceeds in six steps: (1)~map each ICD-10-CM diagnosis and ICD-10-PCS procedure to its CMS clinical groups, chapter, and sex-specific rules; (2)~fire multi-code procedure clusters and apply cluster suppression; (3)~remove secondary diagnoses excluded by the principal diagnosis or counted only if discharged alive; (4)~compute rule-specific severity (\emph{MCC}, \emph{CC}, or neither); (5)~evaluate rules top-to-bottom (first match wins) across pre-MDC, the principal diagnosis's MDC, and reroutes (multiple trauma, HIV, unrelated surgery); and (6)~run a second pass removing qualifying hospital-acquired conditions not present on admission to yield both \emph{initial} and \emph{final} DRGs.
 
-NHS England's \emph{Guide to Identification Rules} workbook for the Prescribed Specialised Services Operational Tool (PSO)~\cite{nhse2026pso} follows the same pattern. Its tables list, for 214 specialised service lines and 261 identification rules, the exact diagnosis, procedure, specialty, age, and provider-eligibility lists required, together with the dominance hierarchy and National Programme of Care (NPoC) for each service line. \textbf{opendrg} imports these rules directly into a compact 42~KB table set and flags every qualifying service line plus the dominant service line and NPoC for each episode, outpatient attendance, and spell.
+\textbf{NHS England HRG4+ and PSO workflow.} For each admitted-patient-care episode, the HRG4+ engine: (1)~validates demographic, administrative, ICD-10, and OPCS-4 fields (flagging invalid episodes as \texttt{UZ01Z} with official quality messages); (2)~forms procedure combination codes from driving operations and their contiguous site/approach qualifiers; (3)~derives unbundled HRGs (consuming their driving procedures); (4)~selects the dominant procedure as the highest-ranked remaining code in NHS England's procedure hierarchy; (5)~evaluates candidate HRG roots under NHS precedence (burns $>$ multiple trauma $>$ procedure $>$ global exception $>$ diagnosis, last satisfied rule wins) and Core~3 escalations; (6)~applies complexity, age, and length-of-stay splits plus programme-budgeting mappings; and (7)~groups multi-episode \emph{spells} from the dominant episode combined with the union of the spell's diagnoses and procedures. The other six datasets (outpatients, emergency medicine, adult/paediatric/neonatal critical care, and renal dialysis) reuse the same rule engine with dataset-specific inputs and hierarchies. The PSO engine evaluates each service line's rule lists over the same episode or outpatient fields and picks the dominant qualifying service line and NPoC per episode, attendance, and spell.
 
-Verifying against NHS England's official sample outputs caught two subtle quirks in the published workbook that a manual reading could easily miss: one sheet (\texttt{List Members}) still contained stale 2024/25 entries while \texttt{Code Sets} held the current rules, and the generic provider code \texttt{PSS} (used to bypass provider-specific eligibility checks) is described in the manual but omitted from the spreadsheet lists. Accounting for both, \textbf{opendrg} reproduces \textbf{100\% of NHS England's sample results} across all 300 inpatient episodes (including all 44 multi-episode spells and 30 validation messages) and all 200 outpatient attendances. Importing the May 2026 \emph{Version 2} update reproduced the exact published change list (one new outpatient service line, one added procedure, and four provider updates).
+Both systems share a uniform, three-line R interface:
 
-\section{Grouping Directly on Hospital Databases (OMOP CDM)}
-\label{sec:omop}
+\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}[language=R]
+library(opendrg)
 
-{\sloppy In federated health-data networks built on the OMOP Common Data Model~\cite{ohdsi2024omop} (such as OHDSI, DARWIN~EU, and EHDEN), sensitive patient records remain inside each hospital's secure database: researchers send analytical code to the hospital, connect via \texttt{CDMConnector}~\cite{black2025cdmconnector}, and receive only aggregate results back. Traditional casemix tools that require exporting raw patient files to a Windows desktop cannot operate in this setting. \textbf{opendrg} closes this gap with dedicated OMOP functions---\texttt{omop\_msdrg()} for MS-DRG, \texttt{omop\_hrg()} for NHS England HRG4+, and direct Prescribed Specialised Services flagging---that work both on an entire database and directly on study cohorts created with \texttt{CohortConstructor}.\par}
+# US / Spain (MS-DRG):
+g <- grouper("msdrg", version = "44.0")
+msdrg_out <- group(g, claims, diagnoses, procedures)
 
-\subsection{How the OMOP adapter works and handles real-world data}
+# England (HRG4+ admitted care, or dataset = "nac", "em", ...):
+h <- grouper("hrg4plus", version = "2025-26-lp")
+hrg_out <- group(h, episodes)
+\end{lstlisting}
+\end{minipage}
 
-Figure~\ref{fig:omop_er} shows the OMOP tables read by \textbf{opendrg} and the casemix outputs it produces. All filtering and code lookups run read-only inside the hospital's database (no write access is needed), and only the stays selected for the study are grouped. The adapter works across both OMOP CDM v5.3 and v5.4 and handles both United States/Spanish coding (ICD-10-CM and ICD-10-PCS) and English coding (ICD-10---automatically padding three-character codes such as \texttt{I10} to NHS format \texttt{I10X}---and OPCS-4, keeping procedure order intact for combination codes, with optional multi-episode spells from \texttt{visit\_detail} and specialty mapping to NHS Treatment Function Codes).
+\subsection{Verification protocol against official software}
+
+Written manuals describe clinical intent, whereas reimbursement and research reproducibility require matching the exact outputs of official software.
+\begin{itemize}[leftmargin=*,nosep]
+    \item \textbf{MS-DRG oracle:} We ran CMS's official Java grouper across CMS's complete 9{,}864-stay test database (\texttt{TESTDB}) for versions 43.0, 43.1, and 44.0 (first confirming that our setup reproduced CMS's own embedded expectations on all 9{,}864 stays), and compared every output field against \textbf{opendrg}, including HAC shifts and unknown hospital POA status.
+    \item \textbf{HRG4+ and PSO oracles:} We compared \textbf{opendrg} record-by-record against NHS England's official expected outputs across all seven HRG4+ datasets (2{,}250 records in total, covering both the 2024/25 National Costs and 2025/26 Local Payment designs~\cite{nhse2025lpg}) and against NHS England's official PSO sample datasets (300 inpatient episodes / 141 spells and 200 outpatient attendances, plus verifying the exact May 2026 Version~2 rule differences).
+\end{itemize}
+
+\subsection{Grouping on hospital OMOP databases}
+
+{\sloppy In federated research networks (OHDSI, DARWIN~EU, EHDEN), patient records remain inside each hospital's database and researchers connect via \texttt{CDMConnector}~\cite{black2025cdmconnector}. \textbf{opendrg} provides symmetrical OMOP adapters for both classifications---\texttt{omop\_msdrg()} for MS-DRG and \texttt{omop\_hrg()} for NHS England HRG4+ (plus direct PSO flagging via \texttt{group(grouper("pso"), cdm)})---all accepting either a full database reference or a study cohort created with \texttt{CohortConstructor}.\par}
+
+Figure~\ref{fig:omop_er} shows the OMOP CDM tables read and the casemix outputs produced. All filtering and code lookups execute read-only inside the hospital database across both OMOP CDM v5.3 and v5.4. For MS-DRG, the adapter extracts ICD-10-CM and ICD-10-PCS codes and maps discharge status to UB-04 codes; for HRG4+ and PSO, it extracts ICD-10 (automatically padding three-character codes such as \texttt{I10} to NHS format \texttt{I10X}) and OPCS-4 (preserving recorded procedure order for combination codes), supports both one-episode-per-spell and multi-episode \texttt{visit\_detail} (FCE) grouping, and maps provider specialties and admission/discharge fields to NHS codes (\texttt{MAINSPEF}/\texttt{TRETSPEF}, \texttt{ADMIMETH}/\texttt{ADMISORC}, \texttt{DISMETH}/\texttt{DISDEST}).
 
 \begin{figure*}[!t]\centering
 \resizebox{\textwidth}{!}{%
@@ -476,7 +399,7 @@ Figure~\ref{fig:omop_er} shows the OMOP tables read by \textbf{opendrg} and the 
         {OMOP CDM v5.3 / v5.4 Database (read-only via \texttt{CDMConnector})};
 \end{pgfonlayer}
 
-% --- Column 4 (x = 17.8): opendrg OMOP Adapter (OUTSIDE CDM box) ---
+% --- Column 4 (x = 17.8): opendrg OMOP Adapter ---
 \node[adapter] (adapter) at (17.8, 0.1) {%
   \textbf{opendrg OMOP Adapter}\\
   \texttt{omop\_to\_msdrg()}\\
@@ -525,73 +448,120 @@ Figure~\ref{fig:omop_er} shows the OMOP tables read by \textbf{opendrg} and the 
   discharge/specialty sources, grouping rate%
 };
 
-% --- ER Relationships (Col 1 -> Col 2) ---
+% --- ER Relationships ---
 \draw[relopt] (cohort.east) -- ++(0.65,0) |- node[lbl, pos=0.22] {scope} ([yshift=0.75cm]visit.west);
 \draw[rel] (person.east) -- ++(0.45,0) |- node[lbl, pos=0.22] {1 : *} ([yshift=0.2cm]visit.west);
 \draw[relopt] (death.east) -- ++(0.45,0) |- node[lbl, pos=0.22] {0..1 : *} ([yshift=-0.35cm]visit.west);
 \draw[relopt] (admin.east) -- ++(0.65,0) |- node[lbl, pos=0.2] {0..1 : *} ([yshift=-0.85cm]visit.west);
 \draw[relopt] (admin.east) -- ++(0.65,0) |- (vdet.west);
 
-% --- ER Relationships (within Col 2) ---
 \draw[rel] (visit.north) -- node[lbl, right=2pt] {1 : 0..*} (cond.south);
 \draw[relopt] (visit.south) -- node[lbl, right=2pt] {1 : 0..*} (vdet.north);
 \draw[rel] ([yshift=-0.7cm]visit.west) -- ++(-0.32,0) |- node[lbl, pos=0.72] {1 : 0..*} (proc.west);
 
-% --- Vocabulary joins (Col 2 -> Col 3) ---
 \draw[rel] (cond.east) -- ++(0.45,0) |- node[lbl, pos=0.62, above=1pt] {source} ([yshift=0.45cm]concept.west);
 \draw[relopt] ([yshift=-0.75cm]cond.east) -- ++(0.35,0) |- node[lbl, pos=0.72, above=1pt] {std} (crel.west);
 \draw[relopt] (crel.north) -- node[lbl, right=2pt] {Maps to} (concept.south);
 \draw[rel] (proc.east) -- ++(0.75,0) |- node[lbl, pos=0.14] {PCS / OPCS-4} ([yshift=-0.55cm]concept.west);
 
-% --- CDM Box -> Adapter ---
 \draw[flow] (cdmbox.east |- adapter.west) -- node[lbl, above=2pt] {scoped stays} (adapter.west);
-
-% --- Adapter -> Outputs ---
 \draw[flow] ([yshift=0.95cm]adapter.east) -- ++(0.85,0) |- node[lbl, pos=0.72, above=1pt] {\texttt{msdrg\_group()}} (out_msdrg.west);
 \draw[flow] ([yshift=0.0cm]adapter.east) -- ++(0.85,0) |- node[lbl, align=center, pos=0.72, above=1pt] {\texttt{hrg\_group\_apc()}\\ \texttt{/ pso\_flag\_apc()}} (out_hrg.west);
 \draw[flow] ([yshift=-0.95cm]adapter.east) -- ++(0.85,0) |- node[lbl, pos=0.72, above=1pt] {quality audit} (out_qual.west);
 
 \end{tikzpicture}}
-\caption{\textbf{OMOP CDM tables used by \texttt{opendrg} and the resulting casemix outputs.} Solid boxes inside the dashed database boundary denote core OMOP tables used in every run; dashed boxes denote optional tables (study cohorts, mortality records, multi-episode consultant stays for HRG4+, provider/site details, and vocabulary fallback mappings). All data stays inside the hospital database except the selected stays, producing stay-, episode-, and spell-level casemix outputs alongside a data-quality report.}
+\caption{\textbf{OMOP CDM tables used by \texttt{opendrg} and the resulting casemix outputs.} Solid boxes inside the dashed database boundary denote core OMOP tables used in every run; dashed boxes denote optional tables (study cohorts, mortality records, multi-episode consultant stays for HRG4+, provider/site details, and vocabulary fallback mappings). Both MS-DRG and HRG4+/PSO outputs carry an attached data-quality report.}
 \label{fig:omop_er}
 \end{figure*}
 
-{\sloppy Real-world hospital OMOP databases vary widely in how completely they preserve billing fields. Rather than making silent guesses that could distort cost or casemix estimates, \textbf{opendrg} requires explicit choices and summarises every data-quality gap automatically in an attached readiness report:\par}
-
-{\sloppy
+{\sloppy Because real-world hospital OMOP databases often omit billing fields, \textbf{opendrg} never guesses silently; every assumption is explicit and audited in an attached quality report (\texttt{omop\_\allowbreak msdrg\_\allowbreak quality()} / \texttt{omop\_\allowbreak hrg\_\allowbreak quality()}):
 \begin{enumerate}[leftmargin=*,nosep]
-    \item \textbf{Choosing the principal diagnosis.} Because a DRG or HRG depends critically on which diagnosis was the main reason for admission, \textbf{opendrg} never guesses silently. By default (\texttt{"status"}), it uses the hospital's recorded primary-diagnosis flag and marks stays without one as ungroupable. For disease-specific research cohorts where primary flags are missing, analysts can explicitly specify a study diagnosis list (\texttt{"codelist"}), inherit the defining condition directly from a \texttt{CohortConstructor} cohort (\texttt{"cohort\_codelist"}), run a sensitivity check trying every diagnosis on a stay in turn (\texttt{"all"}), or opt into a first-recorded-code approximation (\texttt{"first"}).
-    \item \textbf{Diagnoses and code quality.} Source ICD-10-CM (or ICD-10) codes are used first, excluding free-text NLP extractions by default so unverified notes do not inflate severity. An optional vocabulary fallback (\texttt{vocabulary\_\allowbreak fallback = TRUE}) can translate standard OMOP concepts when source codes are absent. Non-billable category headers (such as \texttt{N18} instead of a specific chronic kidney disease stage) are reported separately from genuinely invalid codes.
-    \item \textbf{Procedures and surgical visibility.} Standard and source procedure concepts (ICD-10-PCS or OPCS-4) are both read, and any stay with unmapped local procedures is flagged in the quality report so under-counted surgical groups are immediately apparent.
-    \item \textbf{Discharge disposition and POA.} Discharge status is resolved in four clear steps: (i) in-hospital death recorded in the OMOP \texttt{death} table, (ii) an optional hospital-specific discharge lookup table, (iii) standard OMOP discharge concepts, and (iv) routine discharge home as a documented fallback. Because OMOP databases rarely carry US present-on-admission flags, MS-DRG grouping defaults to POA-exempt mode.
+    \item \textbf{Principal diagnosis strategy.} By default (\texttt{"status"}), only stays with an OMOP primary-diagnosis flag are grouped; stays without one are marked ungroupable. Analysts can explicitly choose a study disease list (\texttt{"codelist"}), inherit each cohort's defining condition from \texttt{CohortConstructor} (\texttt{"cohort\_\allowbreak codelist"}), test every diagnosis in turn as a sensitivity check (\texttt{"all"}), or opt into first-code ordering (\texttt{"first"}).
+    \item \textbf{Code quality and vocabulary fallback.} Source ICD-10-CM / ICD-10 concepts are preferred, excluding free-text NLP rows by default so unverified notes do not inflate severity. An optional \texttt{vocabulary\_\allowbreak fallback = TRUE} path translates standard OMOP concepts when source codes are absent. Non-billable category headers (e.g.\ \texttt{N18}) are reported separately from invalid codes.
+    \item \textbf{Procedures and discharge disposition.} Both standard and source procedure concepts are read, flagging stays with unmapped local procedures. Discharge status follows four tiers: in-stay death in \texttt{death}, optional per-site lookup map, standard OMOP discharge concepts, and routine home fallback.
 \end{enumerate}
 \par}
 
-\noindent\begin{minipage}{\linewidth}
-\begin{lstlisting}[language=R]
-library(CDMConnector)
-library(opendrg)
+\subsection{Live Spanish hospital portability study}
 
-# Connect read-only to the hospital OMOP database:
-cdm <- cdmFromCon(con, cdmSchema = "cdm", cdmName = "hospital")
-g   <- grouper("msdrg", version = "44.0")
+To test cross-country portability in practice, we evaluated \textbf{opendrg} read-only on a live OMOP CDM v5.4 database at a Spanish specialist urology--nephrology hospital (222{,}360 historical inpatient stays; 5{,}126 stays across 3{,}791 patients in 2024; 35{,}312 matched stays with official 3M APR-GRD v35/v36 relative weights from 2018 through August 2024; aggregate summaries only).
 
-# Group 2024 stays for a specialist study codelist:
-res <- group(
-  g, cdm,
-  start_date = "2024-01-01", end_date = "2024-12-31",
-  principal = "codelist",
-  principal_codes = c("C61","C67","C64","N40","N20","N17","N18","N390","N13"),
-  unmatched = "drop",
-  discharge_map = c("1"="01","2"="02","3"="07","5"="20","4"="03","6"="06")
-)
-omop_msdrg_quality(res)
-\end{lstlisting}
-\end{minipage}
+We conducted two analyses: (i)~on all 5{,}126 stays of 2024, we compared four strategies---the initial CDM audit (\texttt{"status"}), a nine-prefix specialist codelist (\texttt{"codelist"}), a 1{,}000-stay sensitivity spread (\texttt{"all"}), and official-grade grouping with complete OMOP mapping (\texttt{"status"}); and (ii)~across all seven years (2018--2024, $n = 35{,}312$ stays), we benchmarked \textbf{opendrg} MS-DRG v44.0 against the hospital's billed 3M APR-GRD v35/v36 using four plain-English metrics:
+\begin{itemize}[leftmargin=*,nosep]
+    \item \textbf{Cost-weight agreement (5-fold CV $R^2$):} the percentage of stay-to-stay variation in $\log(\text{3M APR-GRD weight})$ explained by \textbf{opendrg}'s MS-DRG on unseen held-out stays.
+    \item \textbf{Rank agreement (Spearman $\rho$):} how consistently \textbf{opendrg} and 3M rank costlier stays above cheaper stays (0 to 1).
+    \item \textbf{Hospital Case-Mix Index (CMI) difference:} percentage difference between predicted and actual mean annual cost weight per stay (both 5-fold cross-validated in-year and prospectively calibrating on year $t-1$ to predict year $t$).
+    \item \textbf{Length-of-stay variation explained and clinical crosswalk:} $R^2$ on $\log(\text{LOS}+1)$ for \textbf{opendrg} MS-DRG versus base and full 4-tier 3M APR-GRD, plus direct patient overlap across the ten largest clinical groups in 2024.
+\end{itemize}
 
-\subsection{Proof of portability: live Spanish hospital OMOP evaluation}
+%----------------------------------------------------------------------------------------
+%	4. RESULTS
+%----------------------------------------------------------------------------------------
 
-{\sloppy A central practical question for any open grouper is whether it is truly portable outside its home country and software ecosystem: can an open US Medicare grouper run directly on a European hospital's OMOP database and deliver a clinically faithful, resource-predictive casemix where local reimbursement relies on proprietary 3M APR-GRD? To test this, we evaluated \textbf{opendrg} read-only on a live OMOP CDM v5.4 database at a Spanish specialist urology--nephrology hospital (222{,}360 historical inpatient stays; 5{,}126 stays across 3{,}791 patients in 2024; 35{,}312 matched stays with official 3M APR-GRD v35/v36 weights across 2018--2024; aggregate outputs only). Table~\ref{tab:omop} compares four runs on 2024 stays using MS-DRG v44.0.\par}
+\section{Results}
+\label{sec:results}
+
+\subsection{Verification of CMS MS-DRG}
+
+Table~\ref{tab:results} summarises the comparison against CMS's official software on all 9{,}864 \texttt{TESTDB} stays. Across all three bundled versions (v43.0, v43.1, and v44.0), \textbf{opendrg} achieved \textbf{100\% agreement on every output field}: final DRG, initial DRG before HAC adjustments, MDC, medical/surgical class, severity tier, and return code. For v44.0 this spans 9{,}720 grouped stays across 759 distinct DRGs, 48 external-cause rejections, 96 invalid principal diagnoses, 101 stays invalid as principal discharge diagnosis (DRG~998), and all 73 stays whose final DRG shifts due to a hospital-acquired condition---including CMS's alternative rejection (return code 10) when hospital POA-reporting status is unknown. Agreement for v43.0 and v43.1 was obtained on the first run after importing their official tables with zero engine changes. Throughput on a standard laptop is approximately 1{,}200 stays per second.
+
+\begin{table}[!t]\centering
+\caption{Agreement of \textbf{opendrg} with CMS's official grouper on all 9{,}864 TESTDB stays, per bundled version.}
+\label{tab:results}
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Output & v43.0 & v43.1 & v44.0 \\
+\midrule
+Final DRG & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
+Initial DRG (before HAC) & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 & 9{,}864 / 9{,}864 \\
+MDC & 100\% & 100\% & 100\% \\
+Medical / surgical class & 100\% & 100\% & 100\% \\
+Severity (MCC / CC / none) & 100\% & 100\% & 100\% \\
+Return code & 100\% & 100\% & 100\% \\
+\midrule
+Stays changed by the HAC check & \multicolumn{3}{c}{73 (all matched)} \\
+Unknown hospital POA status (RC 10) & \multicolumn{3}{c}{73 (all matched)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Verification of NHS England HRG4+ and Prescribed Specialised Services}
+
+Table~\ref{tab:hrgresults} presents the parallel verification for NHS England HRG4+. Across all seven care settings and all 2{,}250 official test records, \textbf{opendrg} achieved \textbf{100\% agreement on every published output field} for both the 2024/25 National Costs release and the 2025/26 Local Payment Grouper (NHS England postponed the 2026/27 release). Throughput is approximately 100 episodes per second.
+
+\begin{table}[!t]\centering
+\caption{Agreement of \textbf{opendrg} with NHS England's expected results on the official HRG4+ test data (all seven datasets), per bundled version.}
+\label{tab:hrgresults}
+\scriptsize
+\setlength{\tabcolsep}{3.0pt}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Dataset / Output & 2024/25 NC & 2025/26 LP \\
+\midrule
+Admitted patient care (FCE HRG) & 750 / 750 & 750 / 750 \\
+\quad Method, dom.\ proc., unbundled, PBC, dur., quality & 100\% & 100\% \\
+Admitted patient care (spell HRG) & 477 / 477 & 477 / 477 \\
+\quad Method, dom.\ proc., diag., LOS, count, report flag & 100\% & 100\% \\
+\midrule
+Non-admitted consultations (HRG, method, dom., unb.) & 200 / 200 & 200 / 200 \\
+Emergency medicine (EM HRG) & 300 / 300 & 300 / 300 \\
+Adult critical care (HRG, CC days, warning flag) & 250 / 250 & 250 / 250 \\
+Paediatric critical care (HRG per day) & 250 / 250 & 250 / 250 \\
+Neonatal critical care (HRG per day) & 300 / 300 & 300 / 300 \\
+Renal dialysis (NRD HRG) & 200 / 200 & 200 / 200 \\
+\midrule
+All 7 datasets (every published field) & \multicolumn{2}{c}{2{,}250 / 2{,}250 (100\%)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For Prescribed Specialised Services (PSO), verifying against official outputs uncovered two subtle discrepancies in NHS England's published workbook: one sheet (\texttt{List Members}) retained stale 2024/25 entries while \texttt{Code Sets} held current rules, and the generic provider bypass code \texttt{PSS} described in the manual was omitted from the spreadsheet lists. Accounting for both, \textbf{opendrg} achieved \textbf{100\% agreement} across all 300 inpatient episodes (including all 44 multi-episode spells and 30 validation messages) and all 200 outpatient attendances, and importing the May 2026 \emph{Version 2} update reproduced the exact published change list (one new outpatient service line, one added procedure, four provider updates). Over 1{,}100 automated checks continuously verify all three groupers and both OMOP adapters across Windows, macOS, and Linux.
+
+\subsection{Real-world portability: Spanish hospital OMOP CDM (2018--2024)}
+
+\textbf{Readiness audit and principal-diagnosis strategies (2024; Table~\ref{tab:omop}).} In the hospital's initial OMOP extract (5{,}126 stays in 2024), 95.8\% of stays carried ICD-10-CM diagnoses (median~4, mean~5.0 codes; 24{,}257 valid billable codes and 174 category headers), but primary-diagnosis flags were unpopulated (0.0\%) and 84.3\% of stays carried unmapped local procedures (only 6.1\% mapped to ICD-10-PCS). Running a sensitivity check across every diagnosis (\texttt{"all"}, 1{,}000 stays, 4{,}913 candidate runs) showed that only \textbf{9.6\% of stays receive the same DRG regardless of which diagnosis is principal}---confirming why silent heuristics fail. Using nine specialist urology/nephrology prefixes (\texttt{"codelist"}) grouped 2{,}782 / 2{,}785 matched stays (99.9\%) in 10.5 seconds with a clean length-of-stay gradient (median 2, 4, and 5 days across NCC, CC, and MCC), though surgical DRGs were capped at 2.7\% due to unmapped procedures. Once complete OMOP mapping was in place (primary/secondary flags on 99.8\% of stays, ICD-10-PCS on 85.1\%, clean billable CIE-10-ES codes without local suffixes, and standard discharge concepts), \texttt{omop\_msdrg(..., principal = "status")} grouped \textbf{5{,}114 / 5{,}126 stays (99.8\%)} in 11.8 seconds with zero heuristics and lifted surgical DRGs to \textbf{57.0\%} (2{,}915 surgical, 2{,}199 medical).
 
 \begin{table*}[!t]\centering
 \caption{End-to-end MS-DRG v44.0 evaluation on a live hospital OMOP CDM v5.4 (Spanish urology--nephrology hospital, 2024 inpatient stays; read-only, aggregate results only).}
@@ -610,18 +580,7 @@ Strategy & Stays & Claims & Grouped (RC~0) & Surgical & Time & Key finding \\
 \end{tabular}
 \end{table*}
 
-Five practical lessons emerged from this hospital evaluation:
-
-{\sloppy
-\begin{itemize}[leftmargin=*,nosep]
-    \item \textbf{Initial readiness audit.} Of the 5{,}126 inpatient stays in 2024, 95.8\% already carried ICD-10-CM diagnoses (median~4, mean~5.0 codes per stay; 24{,}257 valid billable codes and 174 non-billable category headers such as \texttt{G20} and \texttt{I42.0}). However, two billing fields had not been populated in the initial OMOP extract: primary-diagnosis flags (0.0\%) and ICD-10-PCS procedure mappings (6.1\% mapped versus 84.3\% unmapped local procedures). Discharge disposition also used a hospital-specific code list (where code \texttt{5} denoted death, rather than the Spanish national register's code~\texttt{4}).
-    \item \textbf{Why primary-diagnosis flags matter.} Testing every coded diagnosis on a stay as the principal diagnosis (\texttt{principal = "all"}, 1{,}000 stays, 4{,}913 candidate runs) revealed that only \textbf{9.6\% of stays receive the same DRG regardless of which diagnosis is chosen as principal} (10.1\% same base DRG; 12.2\% same body-system chapter). Without a primary-diagnosis flag, naive heuristics are unreliable because common comorbidities such as hypertension dominate.
-    \item \textbf{Disease-specific studies work even without primary flags.} Using nine specialist urology and nephrology diagnosis prefixes (\texttt{C61}, \texttt{C67}, \texttt{C64}, \texttt{N40}, \texttt{N20}, \texttt{N17}, \texttt{N18}, \texttt{N390}, \texttt{N13}) as the study codelist matched 2{,}785 stays (54.3\% of admissions) and grouped 2{,}782 cleanly (99.9\%) in 10.5 seconds, with length of stay rising smoothly by severity (median 2 days without CC/MCC, 4 days with CC, 5 days with MCC). Because local procedures were unmapped, however, surgical DRGs were under-represented (2.7\%).
-    \item \textbf{Complete OMOP mapping unlocks 99.8\% hospital-wide grouping.} Once the three missing OMOP fields flagged by the readiness report are populated---primary/secondary diagnosis flags (99.8\% of stays), standard ICD-10-PCS procedure concepts (85.1\% of stays; 93.1\% valid PCS rows), clean billable CIE-10-ES codes without hospital-local suffixes (affecting 19.4\% of primary diagnoses and 10.9\% of procedures), and standard discharge concepts---\textbf{opendrg} groups \textbf{5{,}114 / 5{,}126 stays (99.8\%)} in 11.8 seconds with zero heuristics (only 11 uncoded stays and 1 retired code, \texttt{I20.8}). Surgical DRGs jump from 2.7\% to \textbf{57.0\%} (2{,}915 surgical, 2{,}199 medical), accurately reflecting a specialist surgical urology hospital: kidney and ureter procedures (DRGs 661/660/658: 803 stays), transurethral procedures (DRGs 670/669: 403), and transurethral prostatectomy (DRGs 714/713: 325).
-    \item \textbf{Seven-year validation against official 3M APR-GRD (2018--2024, $n = 35{,}312$ stays).} To test both clinical fidelity and stability over time, we grouped every inpatient stay from 2018 through August 2024 with MS-DRG v44.0 (74.2 seconds total) and compared the results against the hospital's own billed 3M APR-GRD v35/v36 codes and official severity-specific relative weights (\emph{peso GRD}). Across all seven years, \textbf{99.8\%--100.0\%} of stays grouped cleanly (53\%--59\% surgical)---only 48 stays out of 35{,}312 (0.14\%) failed due to retired CIE-10-ES codes, demonstrating minimal code-year drift. Table~\ref{tab:omop_apr} summarises agreement year by year using three intuitive metrics: (i)~how much of the patient-to-patient variation in 3M cost weight is captured by \textbf{opendrg} on unseen held-out stays (\textbf{72\%--81\%} out-of-sample; 75\%--85\% in-sample, rising to 84\% when adding \textbf{opendrg}'s severity flag and secondary complication counts); (ii)~whether \textbf{opendrg} and 3M rank costlier stays above cheaper stays in the same order (Spearman rank correlation \textbf{0.78--0.86}); and (iii)~whether the hospital-wide average cost weight (\emph{Case-Mix Index}) agrees across the whole year (within \textbf{$\pm 0.2\%$} in-year, and within \textbf{0.1\%--1.3\%} prospectively when weights from year $t-1$ are applied to year $t$ across stable APR-GRD v36 years 2020--2023). On length of stay, \textbf{opendrg}'s 3-tier MS-DRG explains \textbf{32\%--38\%} of $\log(\text{LOS}+1)$ variation---consistently exceeding base APR-GRD without severity tiers (27\%--32\%) and capturing 80\%--90\% of the explanatory power of full 4-tier 3M APR-GRD (36\%--43\%).
-    \item \textbf{Same patients, matching clinical groups (Table~\ref{tab:omop_xwalk}).} Although MS-DRG and 3M APR-GRD use different numbering systems, inspecting the top inpatient groups side by side shows that they classify the exact same patients together: \textbf{90\%--100\%} of patients in every major surgical and medical MS-DRG land in the corresponding single 3M APR-GRD category. Moreover, \textbf{opendrg}'s severity splits cleanly separate cheaper and costlier stays inside the same 3M base group---for instance, both MS-DRG~714 (uncomplicated transurethral prostatectomy, mean 3M weight 0.649) and MS-DRG~713 (with complications, mean weight 0.754) map 100\% into \texttt{APR36-482}. Differences are confined to broad ``other/miscellaneous'' medical catch-all groups (\texttt{699}/\texttt{700}), which CMS and 3M divide along slightly different lines.
-\end{itemize}
-\par}
+\textbf{Seven-year concordance against 3M APR-GRD (2018--2024; Table~\ref{tab:omop_apr}).} Across all 35{,}312 matched inpatient stays (grouped in 74.2 seconds), \textbf{99.8\%--100.0\%} grouped cleanly every year (53\%--59\% surgical); only 48 stays (0.14\%) failed due to retired CIE-10-ES codes. On unseen held-out stays, \textbf{opendrg}'s MS-DRG captured \textbf{72\%--81\%} of the variation in official 3M APR-GRD cost weights (75\%--85\% in-sample, rising to 84\% in 2024 when adding \textbf{opendrg}'s severity flag and secondary complication counts), ranked stays with Spearman $\rho = 0.78\text{--}0.86$, and matched each year's hospital Case-Mix Index within \textbf{$\pm 0.2\%$}. Applied prospectively (calibrating weights on year $t-1$ to predict year $t$), hospital CMI stayed within \textbf{$-$0.32\% to $+$1.32\%} across stable APR-GRD v36 years (2020--2023). On length of stay, \textbf{opendrg}'s 3-tier MS-DRG explained \textbf{32\%--38\%} of $\log(\text{LOS}+1)$ variation---exceeding base APR-GRD (27\%--32\%) and capturing 80\%--90\% of full 4-tier 3M APR-GRD (36\%--43\%).
 
 \begin{table*}[!t]\centering
 \caption{Seven-year portability benchmark: \textbf{opendrg} MS-DRG v44.0 (\texttt{principal = "status"}) versus the hospital's official 3M APR-GRD v35/v36 cost weights and length of stay ($n = 35{,}312$ stays, 2018--2024; positive billed APR weights). Cost-weight agreement is 5-fold out-of-sample $R^2$ on $\log(\text{APR weight})$; hospital CMI diff is the 5-fold cross-validated difference in mean hospital Case-Mix Index.}
@@ -647,6 +606,8 @@ Year & Stays & Grouped & Cost-weight agreement (CV $R^2$) & Rank agreement ($\rh
 \end{tabular}
 \end{table*}
 
+\textbf{Clinical crosswalk (Table~\ref{tab:omop_xwalk}).} Inspecting the ten largest inpatient groups in 2024 side by side confirms that MS-DRG and 3M APR-GRD place \textbf{90\%--100\% of the exact same patients} into matching clinical categories across every major surgical and medical procedure (e.g.\ both MS-DRG~714 and MS-DRG~713 map 100.0\% into \texttt{APR36-482}, cleanly separating uncomplicated stays at mean weight 0.649 from complicated stays at 0.754). Divergence is limited to broad ``other/miscellaneous'' medical catch-all groups (\texttt{699}/\texttt{700}), which CMS and 3M partition along slightly different boundaries.
+
 \begin{table*}[!t]\centering
 \caption{Clinical crosswalk of the ten largest inpatient groups on the Spanish hospital OMOP CDM (Jan--Aug 2024, $n = 3{,}360$ grouped stays): \textbf{opendrg} MS-DRG v44.0 versus the hospital's official 3M APR-GRD v36.}
 \label{tab:omop_xwalk}
@@ -670,19 +631,25 @@ Year & Stays & Grouped & Cost-weight agreement (CV $R^2$) & Rank agreement ($\rh
 \end{tabular}
 \end{table*}
 
-\section{Portability, Licensing and Broader Use}
+%----------------------------------------------------------------------------------------
+%	5. DISCUSSION
+%----------------------------------------------------------------------------------------
 
-\textbf{Portability.} \textbf{opendrg} runs anywhere R runs---Windows, macOS, Linux, hospital servers, or secure cloud research workspaces---with no Windows desktop, Java runtime, or proprietary software required. Each classification version is stored as a compact, self-contained table set (under 300~KB), allowing analysts to compare multiple fiscal years side by side in a single study.
+\section{Discussion}
 
-\textbf{Open licensing.} The package code is released under the permissive MIT licence. CMS MS-DRG tables are US federal government works in the public domain. NHS England HRG4+ and Prescribed Specialised Services tables contain public-sector information licensed under the Open Government Licence v3.0~\cite{ogl3}. Official classification dictionaries (ICD-10-CM/PCS, ICD-10, OPCS-4) are not redistributed; only the codes needed for grouping are included.
+\textbf{Portability across platforms, databases, and countries.} \textbf{opendrg} runs anywhere R runs---Windows, macOS, Linux, hospital servers, or secure cloud research environments---with no Windows desktop, Java runtime, or proprietary software required. Each classification version is under 300~KB, allowing multiple fiscal years to coexist in one study. For English costing and HEOR teams, it provides the first open HRG4+ and PSO implementation that runs outside Windows; for federated OMOP networks, it brings grouping directly to the database without exporting patient records; and for countries like Spain that code in CIE-10-ES (ICD-10-CM/PCS) while reimbursing under proprietary APR-GRD, it offers an open, auditable research casemix (alongside a dedicated Spanish RAE-CMBD register adapter, \texttt{cmbd\_to\_msdrg()}, and synthetic 1{,}000-contact discharge dataset).
 
-\textbf{Use beyond the United States and England.} Because several countries code hospital activity in national translations of ICD-10-CM/PCS, MS-DRG can also provide an open, auditable research casemix classification where the local payment grouper is proprietary. Spain is a clear example: Spanish hospitals report discharges in the national register (RAE-CMBD under Royal Decree 69/2015) using CIE-10-ES---the Spanish translation of ICD-10-CM/PCS---while official hospital reimbursement relies on 3M/Solventum's proprietary APR-DRG~\cite{averill2003drg}, whose grouping logic is unpublished. \textbf{opendrg} includes a dedicated Spanish register adapter (\texttt{cmbd\_to\_msdrg()}) that translates RAE-CMBD layouts and code lists (sex, discharge destination, present-on-admission indicators, and age) directly into MS-DRG inputs, together with a synthetic 1{,}000-contact hospital discharge file for testing and training. As our live Spanish hospital evaluation demonstrates, while MS-DRG does not replace APR-DRG for national reimbursement, it closely tracks official APR-GRD resource weights and length of stay while remaining completely open and runnable inside the hospital's own infrastructure.
+\textbf{Practical scope and limitations.} Four boundaries should be kept clear: (1)~\textbf{opendrg} assigns casemix groups, not tariffs or unit prices (which live in national schedules such as NHS National Cost Collection or downstream HEOR packages); (2)~MS-DRG does not replace statutory 3M APR-GRD or ambulatory IR-GRD for Spanish public reimbursement, and does not include Medicare Code Editor (MCE) coding edits or a separate Risk of Mortality score; (3)~a handful of rare paths not exercised by CMS or NHS England's test files (e.g.\ sex-diagnosis conflicts, paediatric critical-care isolation lists) are documented as open coverage items; and (4)~current HRG4+ throughput ($\sim$100 episodes/s) is well suited to hospital cohorts, while vectorisation and live UK OMOP validation (e.g.\ CPRD--HES) are the next priorities.
 
-\textbf{Transparency and reproducibility.} Every rule importer, reference verification check, specification document, and test fixture is published openly in the repository so that any researcher, hospital, or regulator can audit how a stay was classified and import new annual releases as soon as CMS or NHS England publishes them.
+\textbf{Open licensing and reproducibility.} Package code is MIT-licensed. CMS tables are US federal public-domain works; NHS England HRG4+ and PSO tables are published under the Open Government Licence v3.0~\cite{ogl3}. Official classification descriptions are not redistributed. All importers, verification harnesses, specifications, and test fixtures are openly versioned so any analyst or regulator can audit results and import new annual releases.
+
+%----------------------------------------------------------------------------------------
+%	6. CONCLUSION
+%----------------------------------------------------------------------------------------
 
 \section{Conclusion}
 
-Hospital casemix grouping is deterministic, financially consequential, and---as this work demonstrates---fully defined by rule tables that public agencies already publish. By treating those official tables as the single source of truth and verifying an open implementation record-by-record against the agencies' own software, \textbf{opendrg} reproduces CMS MS-DRG with 100\% accuracy across three consecutive versions, NHS England HRG4+ with 100\% accuracy across all seven care settings, and Prescribed Specialised Services flags with 100\% accuracy on official sample data. For English costing and HEOR teams, it provides the first open grouper that runs outside a Windows desktop; for federated OMOP research networks, it brings transparent, auditable casemix grouping directly to the hospital's database without moving patient data; and for health-services researchers everywhere, it turns a closed black box into a reproducible, inspectable part of the analytical record.
+Hospital casemix grouping is deterministic, financially consequential, and fully defined by rule tables that CMS and NHS England already publish. Treating those official tables as executable data and verifying every output record-by-record against the reference tools, \textbf{opendrg} achieves 100\% agreement for CMS MS-DRG across three versions (9{,}864 stays), 100\% agreement for NHS England HRG4+ across all seven care settings (2{,}250 records) and two versions, and 100\% agreement for Prescribed Specialised Services (500 records). Demonstrated across seven years and 35{,}312 inpatient stays in a live Spanish hospital's OMOP CDM, it proves that open, table-driven casemix grouping is genuinely portable across platforms, federated databases, and health systems---turning a closed black box into a reproducible, inspectable part of the analytical record.
 
 %----------------------------------------------------------------------------------------
 %	REFERENCE LIST
