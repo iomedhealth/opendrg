@@ -335,22 +335,27 @@ The grouper application itself confirms this reading: unpacked, it is a .NET 4.5
 NHS England also publishes official test data with expected results for all seven datasets. These play the role TESTDB plays for MS-DRG, with one difference: the expected results come from the shipped application rather than from an API we can drive, so the algorithm had to be transcribed from the User Manual and Chapter Summaries into an engine specification (\texttt{dev/notes/}, 950 lines with source citations), and every rule that the prose leaves ambiguous was disambiguated against the test data. The resulting engine is small. For an episode it validates the record, forms combination codes (a driving code with its qualifying site/approach codes; where several combinations compete, the longer wins and ``subsidiary'' combinations consume a contiguous qualifier run), derives unbundled HRGs (whose codes are then consumed), selects the dominant procedure as the highest hierarchy value among the remaining non-qualifier codes (lowest position on ties), evaluates the \texttt{Code To Group} candidates of the dominant procedure and of the primary diagnosis with burns $>$ multiple trauma $>$ procedure $>$ global exception $>$ diagnosis precedence, where within a row the \emph{last} satisfied (root, flag) pair wins, escalates through \texttt{Core 3}, applies the \texttt{Group To Split} rules and the programme-budgeting mapping. A spell is grouped by building a pseudo-record from its dominant episode with the union of all episodes' diagnoses and procedures and running the same engine. The other six datasets reuse the same flag language with their own inputs; emergency medicine needs the investigation and treatment hierarchies, adult critical care an organ-support count, and paediatric and neonatal critical care two flowcharts of 29 and 15 nodes---none of which is in the workbook. We transcribed them from the Chapter Summaries into versioned CSV/Markdown files (\texttt{data-raw/hrg/}) that are bundled with the tables.
 
 \begin{table}[!t]\centering
-\caption{Agreement of \textbf{opendrg} with NHS England's expected results on the official HRG4+ 2024/25 National Costs test data (all datasets).}
+\caption{Agreement of \textbf{opendrg} with NHS England's expected results on the official HRG4+ test data (all seven datasets), per bundled version.}
 \label{tab:hrgresults}
 \scriptsize
 \setlength{\tabcolsep}{3.0pt}
-\begin{tabular}{@{}p{2.2cm}p{1.3cm}p{3.4cm}@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-Dataset & Records & Outputs matched \\
+Dataset / Output & 2024/25 NC & 2025/26 LP \\
 \midrule
-Admitted patient care & 750 episodes & FCE HRG, grouping method, dominant procedure, unbundled HRGs, PBC, episode duration, quality messages \\
- & 477 spells & spell HRG, method, dominant procedure, primary/secondary diagnosis, LOS, episode count, reporting episode \\
-Non-admitted consultations & 200 & HRG, grouping method, dominant procedure, unbundled HRGs \\
-Emergency medicine & 300 & HRG \\
-Adult critical care & 250 & HRG, critical-care days, warning flag \\
-Paediatric critical care & 250 & HRG per day \\
-Neonatal critical care & 300 & HRG per day \\
-Renal & 200 & HRG \\
+Admitted patient care (FCE HRG) & 750 / 750 & 750 / 750 \\
+\quad Method, dom.\ proc., unbundled, PBC, dur., quality & 100\% & 100\% \\
+Admitted patient care (spell HRG) & 477 / 477 & 477 / 477 \\
+\quad Method, dom.\ proc., diag., LOS, count, report flag & 100\% & 100\% \\
+\midrule
+Non-admitted consultations (HRG, method, dom., unb.) & 200 / 200 & 200 / 200 \\
+Emergency medicine (EM HRG) & 300 / 300 & 300 / 300 \\
+Adult critical care (HRG, CC days, warning flag) & 250 / 250 & 250 / 250 \\
+Paediatric critical care (HRG per day) & 250 / 250 & 250 / 250 \\
+Neonatal critical care (HRG per day) & 300 / 300 & 300 / 300 \\
+Renal dialysis (NRD HRG) & 200 / 200 & 200 / 200 \\
+\midrule
+All 7 datasets (every published field) & \multicolumn{2}{c}{2{,}250 / 2{,}250 (100\%)} \\
 \bottomrule
 \end{tabular}
 \end{table}
