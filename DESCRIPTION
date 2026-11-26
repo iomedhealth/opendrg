@@ -26,6 +26,7 @@ Imports:
     vctrs
 Suggests: 
     CDMConnector,
+    CohortConstructor,
     DBI,
     dbplyr,
     duckdb,

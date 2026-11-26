@@ -326,11 +326,161 @@ test_that("CDMConnector + DuckDB cdm_reference works end-to-end with group(), co
   expect_equal(omop_msdrg_quality(res_empty)$n_stays, 0L)
 })
 
+test_that("CohortConstructor cohorts work directly with omop_to_msdrg(), omop_msdrg() and group()", {
+  skip_if_not_installed("CDMConnector")
+  skip_if_not_installed("CohortConstructor")
+  skip_if_not_installed("DBI")
+  skip_if_not_installed("duckdb")
+  skip_if_not_installed("omopgenerics")
+
+  tbls <- make_synthetic_omop_tables()
+  # Simulate a real-world site with no primary-diagnosis status flags, plus a
+  # second inpatient stay for person 1 in November (outside the May AMI event)
+  # to test cohort_match = "index" vs "overlap" vs "subject".
+  tbls$condition_occurrence$condition_status_concept_id <- 0L
+  tbls$condition_occurrence$condition_end_date <- tbls$condition_occurrence$condition_start_date
+  tbls$visit_occurrence <- dplyr::bind_rows(
+    tbls$visit_occurrence,
+    tibble::tibble(
+      visit_occurrence_id = 107L, person_id = 1L, visit_concept_id = 9201L,
+      visit_start_date = as.Date("2024-11-01"), visit_end_date = as.Date("2024-11-04"),
+      visit_type_concept_id = 32817L,
+      discharged_to_concept_id = 8536L, discharged_to_source_value = "1"
+    )
+  )
+  tbls$condition_occurrence <- dplyr::bind_rows(
+    tbls$condition_occurrence,
+    tibble::tibble(
+      condition_occurrence_id = 15L, person_id = 1L, visit_occurrence_id = 107L,
+      condition_concept_id = 316866L, condition_source_concept_id = 1009L,
+      condition_status_concept_id = 0L, condition_type_concept_id = 32817L,
+      condition_start_date = as.Date("2024-11-01"), condition_end_date = as.Date("2024-11-01")
+    )
+  )
+  # Standard concepts needed by CohortConstructor::conceptCohort() + vocabulary table
+  tbls$concept <- dplyr::bind_rows(
+    tbls$concept,
+    tibble::tibble(
+      concept_id = c(312327L, 197320L, 193782L, 316866L),
+      concept_name = c("NSTEMI std", "AKI std", "ESRD std", "Hypertension std"),
+      domain_id = "Condition",
+      vocabulary_id = "SNOMED",
+      concept_class_id = "Clinical Finding",
+      standard_concept = "S",
+      concept_code = c("S1", "S2", "S3", "S4"),
+      valid_start_date = as.Date("1970-01-01"),
+      valid_end_date = as.Date("2099-12-31"),
+      invalid_reason = NA_character_
+    )
+  )
+  tbls$vocabulary <- tibble::tibble(
+    vocabulary_id = "None", vocabulary_name = "OMOP",
+    vocabulary_reference = "", vocabulary_version = "v5.0", vocabulary_concept_id = 0L
+  )
+
+  con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE), dbdir = ":memory:")
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  for (nm in names(tbls)) {
+    DBI::dbWriteTable(con, nm, tbls[[nm]])
+  }
+
+  cdm <- CDMConnector::cdmFromCon(con = con, cdmSchema = "main", writeSchema = "main", cdmName = "cc_duckdb")
+
+  # Multi-cohort CohortConstructor table:
+  # - ami (id 1): visits 101, 102
+  # - aki (id 2): visits 101, 102 (overlaps ami on the exact same stays!)
+  # - esrd (id 3): visit 105
+  cdm$clinical <- CohortConstructor::conceptCohort(
+    cdm = cdm,
+    conceptSet = list(ami = 312327L, aki = 197320L, esrd = 193782L),
+    name = "clinical"
+  )
+
+  # 1. Pass CohortConstructor cohort_table directly as first argument, using
+  #    its attached cohort_codelist to select each cohort's principal diagnosis!
+  inp <- omop_to_msdrg(cdm$clinical, principal = "cohort_codelist", tables = "44.0")
+  expect_s3_class(inp, "omop_msdrg_input")
+  expect_true(all(c("cohort_definition_id", "cohort_name") %in% names(inp$claims)))
+  expect_equal(nrow(inp$claims), 5L) # 101 & 102 in ami, 101 & 102 in aki, 105 in esrd
+  expect_equal(inp$quality$n_stays, 3L) # 3 distinct underlying inpatient stays
+  expect_equal(nrow(inp$quality$cohorts), 3L)
+
+  res <- group(grouper("msdrg", version = "44.0"), cdm$clinical, principal = "cohort_codelist")
+  ami_rows <- res |> dplyr::filter(.data$cohort_name == "ami") |> dplyr::arrange(.data$visit_occurrence_id)
+  aki_rows <- res |> dplyr::filter(.data$cohort_name == "aki") |> dplyr::arrange(.data$visit_occurrence_id)
+  esrd_rows <- res |> dplyr::filter(.data$cohort_name == "esrd")
+
+  # On the SAME stay 101, ami cohort gets principal I214 (DRG 251) while aki
+  # cohort gets principal N179 (MDC 11 renal failure)!
+  expect_equal(ami_rows$principal_code, c("I214", "I214"))
+  expect_equal(ami_rows$drg, c(251L, 284L))
+  expect_equal(aki_rows$principal_code, c("N179", "N179"))
+  expect_equal(aki_rows$mdc, c(11L, 11L))
+  expect_equal(esrd_rows$principal_code, "N186")
+  expect_equal(esrd_rows$drg, 684L)
+  expect_true(all(res$principal_source == "cohort_codelist"))
+
+  # 2. Filter by cohort_id (character cohort_name or integer cohort_definition_id)
+  res_name <- omop_msdrg(cdm, cohort = "clinical", cohort_id = "ami",
+                         principal = "cohort_codelist", tables = "44.0")
+  expect_equal(res_name$visit_occurrence_id, c(101L, 102L))
+  expect_equal(res_name$drg, c(251L, 284L))
+  expect_equal(unique(res_name$cohort_name), "ami")
+  # Single cohort keeps clean visit_occurrence_id claim_id (no "1:" prefix)
+  expect_equal(res_name$claim_id, c("101", "102"))
+
+  cset <- omopgenerics::settings(cdm$clinical)
+  ami_id <- cset$cohort_definition_id[cset$cohort_name == "ami"]
+  esrd_id <- cset$cohort_definition_id[cset$cohort_name == "esrd"]
+  res_id <- omop_msdrg(cdm$clinical, cohort_id = c(ami_id, esrd_id),
+                       principal = "cohort_codelist", tables = "44.0")
+  expect_equal(sort(unique(res_id$cohort_name)), c("ami", "esrd"))
+
+  # 3. cohort_match = "index" vs "overlap" vs "subject"
+  # Extend cohort_end_date to observation_period_end_date so overlap catches
+  # person 1's November stay (107), while index catches only 101!
+  cdm$ami_followup <- CohortConstructor::conceptCohort(
+    cdm = cdm,
+    conceptSet = list(ami = 312327L),
+    name = "ami_followup"
+  ) |>
+    CohortConstructor::exitAtObservationEnd()
+  res_index <- omop_to_msdrg(cdm$ami_followup, cohort_match = "index", principal = "cohort_codelist", tables = "44.0")
+  res_overlap <- omop_to_msdrg(cdm$ami_followup, cohort_match = "overlap", principal = "cohort_codelist", tables = "44.0")
+  res_subj <- omop_to_msdrg(cdm$clinical, cohort_id = "ami", cohort_match = "subject", principal = "first", tables = "44.0")
+  expect_equal(res_index$claims$visit_occurrence_id, c(101L, 102L))
+  expect_equal(res_overlap$claims$visit_occurrence_id, c(101L, 102L, 107L))
+  expect_equal(res_subj$claims$visit_occurrence_id, c(101L, 102L, 107L))
+
+  # 4. Multi-cohort principal = "all" expands cleanly with unique claim_ids
+  res_all <- omop_msdrg(cdm$clinical, cohort_id = c("ami", "aki"), principal = "all", tables = "44.0")
+  expect_false(anyDuplicated(res_all$claim_id) > 0L)
+  expect_equal(sort(unique(res_all$cohort_name)), c("aki", "ami"))
+
+  # 5. demographicsCohort() (no codelist): works with principal = "first" /
+  #    "codelist" (including omopgenerics codelist!) and errors clearly for "cohort_codelist"
+  cdm$adults <- CohortConstructor::demographicsCohort(cdm, name = "adults", ageRange = c(18, 120))
+  expect_error(
+    omop_to_msdrg(cdm$adults, principal = "cohort_codelist"),
+    "cohort_codelist"
+  )
+  cl <- omopgenerics::newCodelist(list(ami = 312327L, esrd = 193782L))
+  res_cl <- omop_msdrg(cdm$adults, principal = "codelist", principal_codes = cl, unmatched = "drop", tables = "44.0")
+  expect_equal(res_cl$visit_occurrence_id, c(101L, 102L, 105L))
+  expect_equal(res_cl$drg, c(251L, 284L, 684L))
+
+  # 6. Validation errors
+  expect_error(omop_to_msdrg(cdm$clinical, cohort = "clinical"), "do not also pass")
+  expect_error(omop_to_msdrg(cdm$clinical, cohort_id = "unknown_cohort"), "not found")
+  expect_error(omop_to_msdrg(cdm, cohort_id = 1L), "requires")
+})
+
 test_that("validation errors are clear", {
   expect_error(omop_to_msdrg("not_a_cdm"), "cdm_reference")
   expect_error(omop_to_msdrg(list(person = tibble::tibble())), "missing required OMOP")
   cdm <- make_synthetic_omop_tables()
   expect_error(omop_to_msdrg(cdm, principal = "codelist"), "principal_codes")
+  expect_error(omop_to_msdrg(cdm, principal = "cohort_codelist"), "CohortConstructor")
   expect_error(omop_to_msdrg(cdm, cohort = "nonexistent"), "not found")
   expect_error(omop_msdrg_quality(tibble::tibble()), "quality report")
 })

@@ -356,10 +356,18 @@ and `omop_msdrg()` make every assumption explicit rather than guessing silently:
   legacy primary `condition_type_concept_id`) and marks stays without a flag
   ungroupable (return code 7) instead of picking one arbitrarily. When a site
   does not populate primary flags, pass `principal = "codelist"` with
-  `principal_codes` (the study's index ICD-10-CM codes or prefixes),
-  `principal = "all"` to evaluate every coded diagnosis in turn as a
-  sensitivity analysis, or `principal = "first"` for an explicit first-code
-  approximation.
+  `principal_codes` (ICD-10-CM codes/prefixes, OMOP concept IDs, or a
+  `CodelistGenerator` / `omopgenerics` codelist), `principal = "cohort_codelist"`
+  with a `CohortConstructor` concept cohort to use each cohort's attached index
+  codelist automatically, `principal = "all"` to evaluate every coded diagnosis
+  in turn as a sensitivity analysis, or `principal = "first"` for an explicit
+  first-code approximation.
+* **`CohortConstructor` cohorts**: pass a `CohortConstructor` `cohort_table`
+  directly as the first argument (`omop_to_msdrg(cdm$my_cohort, ...)`,
+  `omop_msdrg(cdm$my_cohort, ...)`, or `group(g, cdm$my_cohort, ...)`), or via
+  `cohort = "my_cohort"`. Multi-cohort tables keep `cohort_definition_id` and
+  `cohort_name`, support filtering by `cohort_id` (IDs or names), and control
+  stay matching with `cohort_match = c("overlap", "index", "subject")`.
 * **Discharge disposition (`discharge_map`, `default_discharge`)**: resolved in
   order from in-stay mortality in the `death` table (`"20"`), an optional
   per-site `discharge_map` over `discharged_to_source_value`, standard OMOP
@@ -393,6 +401,17 @@ omop_msdrg_quality(res)
 #> Grouped (RC 0): 2,782 / 2,785 claims (99.9%); surgical: 2.7%
 #> Diagnosis code validity: category_header=174, valid_billable=24,257
 #> Discharge sources: source_map=4,168, default=945, death=13
+```
+
+```r
+# Working directly with a multi-cohort CohortConstructor table:
+cdm$clinical <- CohortConstructor::conceptCohort(
+  cdm,
+  conceptSet = list(ami = 312327L, aki = 197320L, esrd = 193782L),
+  name = "clinical"
+)
+res <- omop_msdrg(cdm$clinical, principal = "cohort_codelist", cohort_match = "index")
+res[c("cohort_name", "visit_occurrence_id", "principal_code", "drg", "drg_description")]
 ```
 
 See `dev/omop-cdm-example.R` for a complete runnable script against a live

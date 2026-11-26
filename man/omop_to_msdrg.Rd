@@ -2,18 +2,20 @@
 % Please edit documentation in R/omop.R
 \name{omop_to_msdrg}
 \alias{omop_to_msdrg}
-\title{Convert an OMOP CDM reference to MS-DRG input tables}
+\title{Convert an OMOP CDM reference or \code{CohortConstructor} cohort to MS-DRG inputs}
 \usage{
 omop_to_msdrg(
   cdm,
   visit_concept_ids = c(9201L, 262L),
   cohort = NULL,
+  cohort_id = NULL,
+  cohort_match = c("overlap", "index", "subject"),
   person_ids = NULL,
   visit_ids = NULL,
   start_date = NULL,
   end_date = NULL,
   n_max = NULL,
-  principal = c("status", "codelist", "all", "first"),
+  principal = c("status", "codelist", "cohort_codelist", "all", "first"),
   principal_codes = NULL,
   unmatched = c("keep", "drop"),
   primary_status_concept_ids = c(32902L, 32903L, 32901L),
@@ -31,18 +33,32 @@ omop_to_msdrg(
 }
 \arguments{
 \item{cdm}{A \code{cdm_reference} object created by \code{CDMConnector::cdmFromCon()}
-or \code{omopgenerics::cdmFromTables()}, or a named list of OMOP tables
-(\code{person}, \code{visit_occurrence}, \code{condition_occurrence}, \code{concept}, and
-optionally \code{procedure_occurrence}, \code{death}, \code{concept_relationship}).}
+or \code{omopgenerics::cdmFromTables()}, a \code{CohortConstructor} / \code{omopgenerics}
+\code{cohort_table} (whose attached \code{cdm_reference} is extracted automatically),
+or a named list of OMOP tables (\code{person}, \code{visit_occurrence},
+\code{condition_occurrence}, \code{concept}, and optionally \code{procedure_occurrence},
+\code{death}, \code{concept_relationship}).}
 
 \item{visit_concept_ids}{Integer vector of \code{visit_concept_id} values
 defining inpatient stays. Defaults to \code{c(9201L, 262L)} (Inpatient Visit
 and ER and Inpatient Visit). Pass \code{NULL} to keep all visits.}
 
 \item{cohort}{Optional cohort filter: either the name of a cohort table in
-\code{cdm}, or a data frame / lazy table with \code{subject_id} (or \code{person_id}, or
-\code{visit_occurrence_id}) and optionally \code{cohort_start_date} and
-\code{cohort_end_date}.}
+\code{cdm}, a \code{CohortConstructor} \code{cohort_table}, or a data frame / lazy table
+with \code{subject_id} (or \code{person_id}, or \code{visit_occurrence_id}) and
+optionally \code{cohort_definition_id}, \code{cohort_start_date} and
+\code{cohort_end_date}. Omit when passing a \code{cohort_table} directly as \code{cdm}.}
+
+\item{cohort_id}{Optional subset of cohorts to include when \code{cohort} (or a
+\code{cohort_table} passed as \code{cdm}) contains multiple \code{cohort_definition_id}s.
+Accepts integer \code{cohort_definition_id}s or character \code{cohort_name}s
+(resolved against \code{cohort_set}).}
+
+\item{cohort_match}{How cohort entries are matched to inpatient stays when
+\code{cohort_start_date} is present: \code{"overlap"} (default, visit overlaps
+\verb{[cohort_start_date, cohort_end_date]}), \code{"index"} (visit contains
+\code{cohort_start_date}), or \code{"subject"} (all inpatient stays for subjects in
+the cohort).}
 
 \item{person_ids}{Optional vector of \code{person_id} values to restrict to.}
 
@@ -52,18 +68,23 @@ to.}
 \item{start_date, end_date}{Optional inclusive date bounds (\code{Date} or
 \code{"YYYY-MM-DD"}) on \code{visit_start_date}.}
 
-\item{n_max}{Optional positive integer limiting the number of stays
-extracted (ordered deterministically by \code{visit_occurrence_id}).}
+\item{n_max}{Optional positive integer limiting the number of distinct
+inpatient stays extracted (ordered deterministically by
+\code{visit_occurrence_id}).}
 
 \item{principal}{Principal-diagnosis selection strategy: \code{"status"}
-(default), \code{"codelist"}, \code{"all"}, or \code{"first"}. See Details.}
+(default), \code{"codelist"}, \code{"cohort_codelist"}, \code{"all"}, or \code{"first"}. See
+Details.}
 
-\item{principal_codes}{Character vector of ICD-10-CM codes or prefixes
-(dots optional) used when \code{principal = "codelist"}.}
+\item{principal_codes}{Used when \code{principal = "codelist"}: a character
+vector of ICD-10-CM codes or prefixes (dots optional), an integer vector
+of OMOP \code{concept_id}s, a \code{CodelistGenerator} / \code{omopgenerics} codelist
+(named list of concept IDs), or a data frame with a \code{concept_id} column.}
 
-\item{unmatched}{When \code{principal = "codelist"} (or \code{"status"}), whether to
-\code{"keep"} (default) stays without a principal diagnosis (they receive no
-\code{seq = 1} row and group to RC 7 / DRG 999) or \code{"drop"} them.}
+\item{unmatched}{When \code{principal} is \code{"codelist"}, \code{"cohort_codelist"}, or
+\code{"status"}, whether to \code{"keep"} (default) stays without a principal
+diagnosis (they receive no \code{seq = 1} row and group to RC 7 / DRG 999) or
+\code{"drop"} them.}
 
 \item{primary_status_concept_ids}{Integer vector of
 \code{condition_status_concept_id} values denoting a primary diagnosis.
@@ -76,7 +97,7 @@ discharge diagnosis, Primary admission diagnosis).}
 \item{condition_type_concept_ids}{Optional integer vector restricting
 \code{condition_type_concept_id} (for example \code{32817L} for EHR records only).}
 
-\item{exclude_nlp}{Logical; when \code{condition_type_concept_ids} is \code{NULL},
+\item{exclude_nlp}{Logical; when \code{condition_type_concept_id} is \code{NULL},
 exclude NLP-derived conditions (\code{condition_type_concept_id == 32858L}).
 Defaults to \code{TRUE}.}
 
@@ -116,6 +137,8 @@ to \code{\link[=msdrg_group]{msdrg_group()}} or \code{\link[=group]{group()}}.
 \description{
 Extracts inpatient stays, demographics, diagnoses, procedures and discharge
 disposition from a \code{CDMConnector} / \code{omopgenerics} \code{cdm_reference} object
+— or directly from a \code{CohortConstructor} \code{cohort_table} (which carries its
+parent \code{cdm_reference}, \code{cohort_set}, and \code{cohort_codelist} attributes) —
 using lazy \code{dplyr}/\code{dbplyr} queries inside the database (read-only; no write
 schema is needed) and returns the three long tables expected by
 \code{\link[=msdrg_group]{msdrg_group()}} and \code{\link[=group]{group()}}, together with a structured readiness and
@@ -139,16 +162,31 @@ silent heuristic:
 32902/32903/32901, or legacy primary \code{condition_type_concept_id}). Stays
 without a primary flag receive no \code{seq = 1} row and will be marked
 ungroupable (return code 7, DRG 999).
-\item \code{"codelist"}: uses \code{principal_codes} (ICD-10-CM codes or prefixes, e.g.
-\code{c("C61", "N40", "N17")}), choosing the highest-priority matching code
-on each stay (preferring valid billable codes over category headers) as
-\code{seq = 1}.
+\item \code{"codelist"}: uses \code{principal_codes} — either ICD-10-CM codes/prefixes
+(e.g. \code{c("C61", "N40", "N17")}), OMOP \code{concept_id}s, or a
+\code{CodelistGenerator} / \code{omopgenerics} codelist object — choosing the
+highest-priority matching code on each stay (preferring valid billable
+codes over category headers) as \code{seq = 1}.
+\item \code{"cohort_codelist"}: uses the \code{cohort_codelist} attribute attached to a
+\code{CohortConstructor} cohort (e.g. from \code{CohortConstructor::conceptCohort()})
+to automatically select each cohort's defining index condition as the
+principal diagnosis for every \verb{(cohort_definition_id, visit_occurrence_id)}.
 \item \code{"all"}: sensitivity / multi-candidate mode. Generates one candidate
 claim per distinct coded diagnosis on each stay (\code{claim_id = "<visit_occurrence_id>#<k>"}), taking every coded diagnosis in turn as
 principal so the spread of DRGs can be quantified.
 \item \code{"first"}: explicit opt-in heuristic picking the first valid billable
 diagnosis on the stay (by date, occurrence ID and code).
 }
+\item \strong{Cohorts (\code{CohortConstructor})}: Pass a \code{CohortConstructor} \code{cohort_table}
+directly as the first argument (\code{omop_to_msdrg(cdm$my_cohort, ...)}), or
+pass \code{cohort = "my_cohort"} / \code{cohort = cdm$my_cohort}. Multi-cohort tables
+are supported natively: \code{cohort_id} filters by numeric
+\code{cohort_definition_id} or character \code{cohort_name}, \code{cohort_match} controls
+whether inpatient stays must \code{"overlap"} \verb{[cohort_start_date, cohort_end_date]}, contain the \code{"index"} date (\code{cohort_start_date}), or
+match by \code{"subject"}, and \code{cohort_definition_id} / \code{cohort_name} are
+carried through onto \code{claims} (preserving distinct
+\verb{(cohort_definition_id, visit_occurrence_id)} pairs when a stay belongs to
+more than one cohort).
 \item \strong{Procedures} are read from \code{procedure_concept_id} and
 \code{procedure_source_concept_id} in the \code{ICD10PCS} vocabulary. Stays with
 unmapped or non-PCS procedures are flagged (\code{has_unmapped_pr}) and

@@ -2,7 +2,7 @@
 % Please edit documentation in R/omop.R
 \name{omop_msdrg}
 \alias{omop_msdrg}
-\title{Compute MS-DRGs for patients in an OMOP CDM}
+\title{Compute MS-DRGs for patients in an OMOP CDM or \code{CohortConstructor} cohort}
 \usage{
 omop_msdrg(
   cdm,
@@ -13,7 +13,8 @@ omop_msdrg(
 }
 \arguments{
 \item{cdm}{A \code{cdm_reference} object (from \code{CDMConnector::cdmFromCon()} or
-\code{omopgenerics::cdmFromTables()}) or a named list of OMOP tables.}
+\code{omopgenerics::cdmFromTables()}), a \code{CohortConstructor} \code{cohort_table}, or
+a named list of OMOP tables.}
 
 \item{tables}{MS-DRG logic tables from \code{\link[=msdrg_tables]{msdrg_tables()}} or a version label
 such as \code{"44.0"}.}
@@ -23,12 +24,13 @@ Defaults to \code{"exempt"} because standard OMOP CDMs do not carry CMS
 present-on-admission indicators.}
 
 \item{...}{Additional arguments passed to \code{\link[=omop_to_msdrg]{omop_to_msdrg()}} (such as
-\code{cohort}, \code{start_date}, \code{end_date}, \code{n_max}, \code{principal},
-\code{principal_codes}, \code{unmatched}, \code{discharge_map}, \code{default_discharge},
-\code{snomed_fallback}, \code{link_by}).}
+\code{cohort}, \code{cohort_id}, \code{cohort_match}, \code{start_date}, \code{end_date}, \code{n_max},
+\code{principal}, \code{principal_codes}, \code{unmatched}, \code{discharge_map},
+\code{default_discharge}, \code{snomed_fallback}, \code{link_by}).}
 }
 \value{
-A tibble with OMOP stay columns (\code{claim_id}, \code{visit_occurrence_id},
+A tibble with OMOP stay columns (\code{claim_id}, optional
+\code{cohort_definition_id} and \code{cohort_name}, \code{visit_occurrence_id},
 \code{person_id}, \code{visit_start_date}, \code{visit_end_date}, \code{los}, \code{age}, \code{sex},
 \code{discharge_status}, \code{discharge_source}, \code{principal_code},
 \code{principal_source}, \code{n_dx}, \code{n_pr}, \code{has_unmapped_pr}, plus
@@ -39,15 +41,18 @@ A tibble with OMOP stay columns (\code{claim_id}, \code{visit_occurrence_id},
 attribute and can be inspected with \code{\link[=omop_msdrg_quality]{omop_msdrg_quality()}}.
 }
 \description{
-Given a \code{cdm_reference} object from \code{CDMConnector} (or \code{omopgenerics}),
-extracts the scoped inpatient stays with \code{\link[=omop_to_msdrg]{omop_to_msdrg()}}, groups them with
-\code{\link[=msdrg_group]{msdrg_group()}}, and returns a tibble with one row per stay (or per
-candidate principal diagnosis when \code{principal = "all"}), combining the OMOP
-patient/visit identifiers and quality flags with the assigned MS-DRG.
+Given a \code{cdm_reference} object from \code{CDMConnector} (or \code{omopgenerics}) — or
+directly a \code{CohortConstructor} \code{cohort_table} — extracts the scoped
+inpatient stays with \code{\link[=omop_to_msdrg]{omop_to_msdrg()}}, groups them with \code{\link[=msdrg_group]{msdrg_group()}},
+and returns a tibble with one row per stay (or per cohort-stay pair in a
+multi-cohort table, or per candidate principal diagnosis when
+\code{principal = "all"}), combining the OMOP cohort/patient/visit identifiers
+and quality flags with the assigned MS-DRG.
 }
 \details{
 This function can also be invoked through the unified interface via
-\code{group(grouper("msdrg"), cdm, ...)}.
+\code{group(grouper("msdrg"), cdm, ...)} or
+\code{group(grouper("msdrg"), cdm$my_cohort, ...)}.
 }
 \examples{
 cdm <- list(

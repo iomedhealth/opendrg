@@ -31,8 +31,9 @@ group(grouper, claims, diagnoses = NULL, procedures = NULL, ...)
 
 \item{claims}{A data frame with one row per claim, a list returned by
 \code{\link[=cmbd_to_msdrg]{cmbd_to_msdrg()}} or \code{\link[=omop_to_msdrg]{omop_to_msdrg()}}, or (for MS-DRG) a \code{cdm_reference}
-object from \code{CDMConnector}. See the system-specific documentation (e.g.
-\code{\link[=msdrg_group]{msdrg_group()}}, \code{\link[=omop_msdrg]{omop_msdrg()}}) for details.}
+object from \code{CDMConnector} or a \code{cohort_table} from \code{CohortConstructor}.
+See the system-specific documentation (e.g. \code{\link[=msdrg_group]{msdrg_group()}},
+\code{\link[=omop_msdrg]{omop_msdrg()}}) for details.}
 
 \item{diagnoses}{A data frame with one row per diagnosis code on a claim
 (MS-DRG only; HRG4+ episodes carry their codes in \code{DIAG_nn}/\code{OPER_nn}

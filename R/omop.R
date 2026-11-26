@@ -1,7 +1,8 @@
 # Adapter and one-call grouper from an OMOP CDM (CDMConnector / omopgenerics
-# `cdm_reference`) to CMS MS-DRGs. Queries stay lazy in the database through
-# dplyr/dbplyr; only the scoped stays, their diagnoses, procedures and deaths
-# are collected into R, with no write permissions required on the CDM.
+# `cdm_reference` or a CohortConstructor `cohort_table`) to CMS MS-DRGs.
+# Queries stay lazy in the database through dplyr/dbplyr; only the scoped
+# stays, their diagnoses, procedures and deaths are collected into R, with no
+# write permissions required on the CDM.
 
 omop_nlp_type_concept_id <- 32858L
 
@@ -34,6 +35,10 @@ omop_discharge_concept_map <- c(
   "581476"   = "01", # Visit: Home Visit
   "32210"    = "01"  # UB04: Discharged to home / self care
 )
+
+omop_is_cohort_table <- function(x) {
+  inherits(x, "cohort_table") || inherits(x, "GeneratedCohortSet")
+}
 
 # Convert OMOP IDs (including bit64::integer64) to exact character keys without
 # scientific notation or floating-point precision loss.
@@ -80,7 +85,7 @@ omop_parse_bound_date <- function(x, arg) {
 
 omop_validate_cdm <- function(cdm) {
   if (!is.list(cdm)) {
-    cli::cli_abort("{.arg cdm} must be a {.cls cdm_reference} (from {.pkg CDMConnector}) or a named list of OMOP tables.")
+    cli::cli_abort("{.arg cdm} must be a {.cls cdm_reference} (from {.pkg CDMConnector}), a {.cls cohort_table} (from {.pkg CohortConstructor}), or a named list of OMOP tables.")
   }
   required <- c("person", "visit_occurrence", "condition_occurrence", "concept")
   missing <- setdiff(required, names(cdm))
@@ -92,6 +97,18 @@ omop_validate_cdm <- function(cdm) {
 
 omop_is_remote <- function(tbl) {
   inherits(tbl, "tbl_sql") || inherits(tbl, "tbl_lazy")
+}
+
+omop_same_backend <- function(x, y) {
+  rx <- omop_is_remote(x)
+  ry <- omop_is_remote(y)
+  if (rx != ry) return(FALSE)
+  if (!rx) return(TRUE)
+  if (requireNamespace("dbplyr", quietly = TRUE)) {
+    identical(dbplyr::remote_con(x), dbplyr::remote_con(y))
+  } else {
+    TRUE
+  }
 }
 
 omop_compute_age <- function(visit_start_date, birth_datetime, year_of_birth, month_of_birth, day_of_birth) {
@@ -176,6 +193,32 @@ omop_resolve_discharge <- function(died, disc_source_val, disc_concept_id,
   list(discharge_status = status, discharge_source = source)
 }
 
+# Parse `principal_codes`: accepts character ICD-10-CM codes/prefixes, numeric
+# OMOP concept_ids, CodelistGenerator/omopgenerics codelist objects (named lists
+# of integer concept_ids), or data frames with a `concept_id` column.
+omop_parse_principal_codes <- function(x) {
+  if (is.null(x)) return(list(type = "empty", values = character()))
+  if (is.data.frame(x)) {
+    if (!"concept_id" %in% names(x)) {
+      cli::cli_abort("Data frame supplied to {.arg principal_codes} must contain a {.field concept_id} column.")
+    }
+    vals <- unique(as.integer(stats::na.omit(x$concept_id)))
+    return(list(type = "concept_id", values = vals))
+  }
+  if (is.list(x)) {
+    flat <- unlist(x, use.names = FALSE)
+    if (length(flat) == 0L) return(list(type = "empty", values = character()))
+    if (is.numeric(flat)) {
+      return(list(type = "concept_id", values = unique(as.integer(stats::na.omit(flat)))))
+    }
+    return(list(type = "code", values = unique(stats::na.omit(msdrg_normalize_code(flat)))))
+  }
+  if (is.numeric(x)) {
+    return(list(type = "concept_id", values = unique(as.integer(stats::na.omit(x)))))
+  }
+  list(type = "code", values = unique(stats::na.omit(msdrg_normalize_code(x))))
+}
+
 omop_match_codelist <- function(codes, patterns) {
   # Returns integer rank (index into `patterns`, Inf if no match) and logical
   # exact_match for each code.
@@ -193,9 +236,71 @@ omop_match_codelist <- function(codes, patterns) {
   list(rank = rank, exact = exact)
 }
 
+# Resolve a cohort argument (table name in cdm, CohortConstructor cohort_table,
+# or plain data frame / tbl) and extract its cohort_set and cohort_codelist
+# attributes when present, applying any `cohort_id` filter.
+omop_resolve_cohort <- function(cdm, cohort, cohort_id) {
+  if (is.null(cohort)) {
+    if (!is.null(cohort_id)) {
+      cli::cli_abort("{.arg cohort_id} requires {.arg cohort} (or passing a {.cls cohort_table} directly as {.arg cdm}).")
+    }
+    return(list(tbl = NULL, cohort_set = NULL, cohort_codelist = NULL))
+  }
+  if (is.character(cohort)) {
+    if (length(cohort) != 1L || !cohort %in% names(cdm)) {
+      cli::cli_abort("Cohort table {.val {cohort}} was not found in {.arg cdm}.")
+    }
+    cohort <- cdm[[cohort]]
+  }
+  if (!inherits(cohort, "tbl") && !is.data.frame(cohort)) {
+    cli::cli_abort("{.arg cohort} must be a cohort table name in {.arg cdm}, a {.cls cohort_table}, or a data frame / lazy table.")
+  }
+
+  cset_attr <- attr(cohort, "cohort_set")
+  cohort_set <- if (!is.null(cset_attr)) dplyr::collect(cset_attr) else NULL
+  ccode_attr <- attr(cohort, "cohort_codelist")
+  cohort_codelist <- if (!is.null(ccode_attr)) dplyr::collect(ccode_attr) else NULL
+
+  if (!is.null(cohort_id)) {
+    if (!"cohort_definition_id" %in% colnames(cohort)) {
+      cli::cli_abort("{.arg cohort_id} was supplied, but {.arg cohort} has no {.field cohort_definition_id} column.")
+    }
+    if (is.character(cohort_id)) {
+      if (is.null(cohort_set) || !"cohort_name" %in% names(cohort_set)) {
+        cli::cli_abort("Character {.arg cohort_id} requires a {.cls cohort_table} with {.field cohort_set} metadata (e.g. from {.pkg CohortConstructor}).")
+      }
+      missing_names <- setdiff(cohort_id, cohort_set$cohort_name)
+      if (length(missing_names) > 0L) {
+        cli::cli_abort("Cohort name{?s} not found in {.field cohort_set}: {.val {missing_names}}.")
+      }
+      target_ids <- as.integer(cohort_set$cohort_definition_id[match(cohort_id, cohort_set$cohort_name)])
+    } else {
+      target_ids <- unique(as.integer(stats::na.omit(cohort_id)))
+      if (length(target_ids) == 0L) {
+        cli::cli_abort("{.arg cohort_id} must contain at least one valid cohort definition ID or cohort name.")
+      }
+      if (!is.null(cohort_set) && "cohort_definition_id" %in% names(cohort_set)) {
+        missing_ids <- setdiff(target_ids, as.integer(cohort_set$cohort_definition_id))
+        if (length(missing_ids) > 0L) {
+          cli::cli_abort("Cohort definition ID{?s} not found in {.field cohort_set}: {.val {missing_ids}}.")
+        }
+      }
+    }
+    cohort <- omop_filter_in(cohort, "cohort_definition_id", target_ids)
+    if (!is.null(cohort_set)) {
+      cohort_set <- cohort_set |> dplyr::filter(as.integer(.data$cohort_definition_id) %in% target_ids)
+    }
+    if (!is.null(cohort_codelist)) {
+      cohort_codelist <- cohort_codelist |> dplyr::filter(as.integer(.data$cohort_definition_id) %in% target_ids)
+    }
+  }
+
+  list(tbl = cohort, cohort_set = cohort_set, cohort_codelist = cohort_codelist)
+}
+
 # Build the lazy stays query and optional in-memory cohort filter.
-omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
-                                   visit_ids, start_date, end_date, n_max) {
+omop_build_stays_query <- function(cdm, visit_concept_ids, cohort_tbl, cohort_match,
+                                   person_ids, visit_ids, start_date, end_date, n_max) {
   vo <- cdm$visit_occurrence
   vo_cols <- colnames(vo)
   disc_cid_col <- if ("discharged_to_concept_id" %in% vo_cols) {
@@ -238,16 +343,12 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
     q <- dplyr::filter(q, .data$visit_start_date <= !!end_date)
   }
 
-  local_cohort_windows <- NULL
-  if (!is.null(cohort)) {
-    if (is.character(cohort)) {
-      if (length(cohort) != 1L || !cohort %in% names(cdm)) {
-        cli::cli_abort("Cohort table {.val {cohort}} was not found in {.arg cdm}.")
-      }
-      cohort <- cdm[[cohort]]
-    }
-    c_cols <- colnames(cohort)
+  has_cid <- FALSE
+  local_cohort <- NULL
+  if (!is.null(cohort_tbl)) {
+    c_cols <- colnames(cohort_tbl)
     has_vid <- "visit_occurrence_id" %in% c_cols
+    has_cid <- "cohort_definition_id" %in% c_cols
     id_col <- if (has_vid) {
       "visit_occurrence_id"
     } else if ("subject_id" %in% c_cols) {
@@ -260,22 +361,42 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
     has_start <- "cohort_start_date" %in% c_cols
     has_end <- "cohort_end_date" %in% c_cols
 
-    same_backend <- omop_is_remote(q) == omop_is_remote(cohort)
-    if (same_backend) {
+    if (omop_same_backend(q, cohort_tbl)) {
       if (has_vid) {
-        q <- dplyr::semi_join(q, dplyr::select(cohort, "visit_occurrence_id"), by = "visit_occurrence_id")
-      } else if (!has_start) {
-        c_ids <- dplyr::distinct(dplyr::select(cohort, person_id = dplyr::all_of(id_col)))
-        q <- dplyr::semi_join(q, c_ids, by = "person_id")
+        if (has_cid) {
+          c_sub <- dplyr::distinct(dplyr::select(cohort_tbl, "cohort_definition_id", "visit_occurrence_id"))
+          q <- dplyr::inner_join(q, c_sub, by = "visit_occurrence_id")
+        } else {
+          q <- dplyr::semi_join(q, dplyr::select(cohort_tbl, "visit_occurrence_id"), by = "visit_occurrence_id")
+        }
+      } else if (cohort_match == "subject" || !has_start) {
+        if (has_cid) {
+          c_ids <- dplyr::distinct(dplyr::select(cohort_tbl, "cohort_definition_id", person_id = dplyr::all_of(id_col)))
+          q <- dplyr::inner_join(q, c_ids, by = "person_id")
+        } else {
+          c_ids <- dplyr::distinct(dplyr::select(cohort_tbl, person_id = dplyr::all_of(id_col)))
+          q <- dplyr::semi_join(q, c_ids, by = "person_id")
+        }
       } else {
-        c_win <- cohort |>
+        c_win <- cohort_tbl |>
           dplyr::select(
+            dplyr::any_of("cohort_definition_id"),
             person_id = dplyr::all_of(id_col),
             cohort_start_date = "cohort_start_date",
             dplyr::any_of("cohort_end_date")
           )
         q <- dplyr::inner_join(q, c_win, by = "person_id")
-        if (has_end && "visit_end_date" %in% vo_cols) {
+        if (cohort_match == "index") {
+          if ("visit_end_date" %in% vo_cols) {
+            q <- dplyr::filter(
+              q,
+              .data$visit_start_date <= .data$cohort_start_date,
+              dplyr::coalesce(.data$visit_end_date, .data$visit_start_date) >= .data$cohort_start_date
+            )
+          } else {
+            q <- dplyr::filter(q, .data$visit_start_date == .data$cohort_start_date)
+          }
+        } else if (has_end && "visit_end_date" %in% vo_cols) {
           q <- dplyr::filter(
             q,
             .data$visit_start_date <= .data$cohort_end_date,
@@ -290,14 +411,18 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
         } else {
           q <- dplyr::filter(q, .data$visit_start_date >= .data$cohort_start_date)
         }
-        q <- q |>
-          dplyr::select(-dplyr::any_of(c("cohort_start_date", "cohort_end_date"))) |>
-          dplyr::distinct(.data$visit_occurrence_id, .keep_all = TRUE)
+        q <- dplyr::select(q, -dplyr::any_of(c("cohort_start_date", "cohort_end_date")))
+        if (has_cid) {
+          q <- dplyr::distinct(q, .data$cohort_definition_id, .data$visit_occurrence_id, .keep_all = TRUE)
+        } else {
+          q <- dplyr::distinct(q, .data$visit_occurrence_id, .keep_all = TRUE)
+        }
       }
     } else {
-      # In-memory cohort against a remote database: push only the IDs into SQL
-      # (no write permissions needed) and apply any date window after collect().
-      c_df <- dplyr::collect(cohort)
+      # In-memory cohort (or cohort on a different connection) against a remote
+      # database: push only unique IDs into SQL (no write permissions needed)
+      # and apply cohort_definition_id & date windows after collect().
+      c_df <- dplyr::collect(cohort_tbl)
       ids <- unique(c_df[[id_col]])
       if (length(ids) == 0L) {
         q <- dplyr::filter(q, 1L == 0L)
@@ -305,18 +430,21 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
         q <- omop_filter_in(q, "visit_occurrence_id", ids)
       } else {
         q <- omop_filter_in(q, "person_id", ids)
-        if (has_start) {
-          local_cohort_windows <- tibble::tibble(
-            .person_key = omop_id_chr(c_df[[id_col]]),
-            cohort_start_date = as.Date(c_df$cohort_start_date),
-            cohort_end_date = if (has_end) as.Date(c_df$cohort_end_date) else as.Date(NA)
-          )
-        }
+      }
+      if (has_cid || (!has_vid && has_start && cohort_match != "subject")) {
+        local_cohort <- tibble::tibble(
+          .join_key = omop_id_chr(c_df[[id_col]]),
+          .by_vid = has_vid,
+          cohort_definition_id = if (has_cid) as.integer(c_df$cohort_definition_id) else NA_integer_,
+          cohort_start_date = if (has_start) as.Date(c_df$cohort_start_date) else as.Date(NA),
+          cohort_end_date = if (has_end) as.Date(c_df$cohort_end_date) else as.Date(NA)
+        )
       }
     }
   }
 
   keep <- c("visit_occurrence_id", "person_id", "visit_start_date")
+  if (has_cid && is.null(local_cohort)) keep <- c("cohort_definition_id", keep)
   if ("visit_end_date" %in% vo_cols) keep <- c(keep, "visit_end_date")
   if (!is.null(disc_cid_col)) keep <- c(keep, disc_cid_col)
   if (!is.null(disc_val_col)) keep <- c(keep, disc_val_col)
@@ -331,10 +459,15 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
   if (!is.null(n_max)) {
     n_max <- as.integer(n_max)
     if (is.na(n_max) || n_max < 1L) cli::cli_abort("{.arg n_max} must be a positive integer.")
-    # Only push head(n_max) into SQL when no post-collect cohort window filter
-    # remains to be applied.
-    if (is.null(local_cohort_windows)) {
-      q <- dplyr::slice_min(q, .data$visit_occurrence_id, n = n_max, with_ties = FALSE)
+    if (is.null(local_cohort)) {
+      if (has_cid) {
+        top_vids <- q |>
+          dplyr::distinct(.data$visit_occurrence_id) |>
+          dplyr::slice_min(.data$visit_occurrence_id, n = n_max, with_ties = FALSE)
+        q <- dplyr::semi_join(q, top_vids, by = "visit_occurrence_id")
+      } else {
+        q <- dplyr::slice_min(q, .data$visit_occurrence_id, n = n_max, with_ties = FALSE)
+      }
     }
   }
 
@@ -343,15 +476,18 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
     has_visit_end = "visit_end_date" %in% vo_cols,
     has_disc_cid = !is.null(disc_cid_col),
     has_disc_val = !is.null(disc_val_col),
-    local_cohort_windows = local_cohort_windows,
-    post_n_max = if (!is.null(local_cohort_windows)) n_max else NULL
+    has_cohort_id = has_cid,
+    local_cohort = local_cohort,
+    post_n_max = if (!is.null(local_cohort)) n_max else NULL
   )
 }
 
-#' Convert an OMOP CDM reference to MS-DRG input tables
+#' Convert an OMOP CDM reference or `CohortConstructor` cohort to MS-DRG inputs
 #'
 #' Extracts inpatient stays, demographics, diagnoses, procedures and discharge
 #' disposition from a `CDMConnector` / `omopgenerics` `cdm_reference` object
+#' — or directly from a `CohortConstructor` `cohort_table` (which carries its
+#' parent `cdm_reference`, `cohort_set`, and `cohort_codelist` attributes) —
 #' using lazy `dplyr`/`dbplyr` queries inside the database (read-only; no write
 #' schema is needed) and returns the three long tables expected by
 #' [msdrg_group()] and [group()], together with a structured readiness and
@@ -373,16 +509,32 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
 #'     32902/32903/32901, or legacy primary `condition_type_concept_id`). Stays
 #'     without a primary flag receive no `seq = 1` row and will be marked
 #'     ungroupable (return code 7, DRG 999).
-#'   - `"codelist"`: uses `principal_codes` (ICD-10-CM codes or prefixes, e.g.
-#'     `c("C61", "N40", "N17")`), choosing the highest-priority matching code
-#'     on each stay (preferring valid billable codes over category headers) as
-#'     `seq = 1`.
+#'   - `"codelist"`: uses `principal_codes` — either ICD-10-CM codes/prefixes
+#'     (e.g. `c("C61", "N40", "N17")`), OMOP `concept_id`s, or a
+#'     `CodelistGenerator` / `omopgenerics` codelist object — choosing the
+#'     highest-priority matching code on each stay (preferring valid billable
+#'     codes over category headers) as `seq = 1`.
+#'   - `"cohort_codelist"`: uses the `cohort_codelist` attribute attached to a
+#'     `CohortConstructor` cohort (e.g. from `CohortConstructor::conceptCohort()`)
+#'     to automatically select each cohort's defining index condition as the
+#'     principal diagnosis for every `(cohort_definition_id, visit_occurrence_id)`.
 #'   - `"all"`: sensitivity / multi-candidate mode. Generates one candidate
 #'     claim per distinct coded diagnosis on each stay (`claim_id =
 #'     "<visit_occurrence_id>#<k>"`), taking every coded diagnosis in turn as
 #'     principal so the spread of DRGs can be quantified.
 #'   - `"first"`: explicit opt-in heuristic picking the first valid billable
 #'     diagnosis on the stay (by date, occurrence ID and code).
+#' * **Cohorts (`CohortConstructor`)**: Pass a `CohortConstructor` `cohort_table`
+#'   directly as the first argument (`omop_to_msdrg(cdm$my_cohort, ...)`), or
+#'   pass `cohort = "my_cohort"` / `cohort = cdm$my_cohort`. Multi-cohort tables
+#'   are supported natively: `cohort_id` filters by numeric
+#'   `cohort_definition_id` or character `cohort_name`, `cohort_match` controls
+#'   whether inpatient stays must `"overlap"` `[cohort_start_date,
+#'   cohort_end_date]`, contain the `"index"` date (`cohort_start_date`), or
+#'   match by `"subject"`, and `cohort_definition_id` / `cohort_name` are
+#'   carried through onto `claims` (preserving distinct
+#'   `(cohort_definition_id, visit_occurrence_id)` pairs when a stay belongs to
+#'   more than one cohort).
 #' * **Procedures** are read from `procedure_concept_id` and
 #'   `procedure_source_concept_id` in the `ICD10PCS` vocabulary. Stays with
 #'   unmapped or non-PCS procedures are flagged (`has_unmapped_pr`) and
@@ -395,30 +547,47 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
 #'   (4) `default_discharge` (default `"01"`, routine discharge home).
 #'
 #' @param cdm A `cdm_reference` object created by `CDMConnector::cdmFromCon()`
-#'   or `omopgenerics::cdmFromTables()`, or a named list of OMOP tables
-#'   (`person`, `visit_occurrence`, `condition_occurrence`, `concept`, and
-#'   optionally `procedure_occurrence`, `death`, `concept_relationship`).
+#'   or `omopgenerics::cdmFromTables()`, a `CohortConstructor` / `omopgenerics`
+#'   `cohort_table` (whose attached `cdm_reference` is extracted automatically),
+#'   or a named list of OMOP tables (`person`, `visit_occurrence`,
+#'   `condition_occurrence`, `concept`, and optionally `procedure_occurrence`,
+#'   `death`, `concept_relationship`).
 #' @param visit_concept_ids Integer vector of `visit_concept_id` values
 #'   defining inpatient stays. Defaults to `c(9201L, 262L)` (Inpatient Visit
 #'   and ER and Inpatient Visit). Pass `NULL` to keep all visits.
 #' @param cohort Optional cohort filter: either the name of a cohort table in
-#'   `cdm`, or a data frame / lazy table with `subject_id` (or `person_id`, or
-#'   `visit_occurrence_id`) and optionally `cohort_start_date` and
-#'   `cohort_end_date`.
+#'   `cdm`, a `CohortConstructor` `cohort_table`, or a data frame / lazy table
+#'   with `subject_id` (or `person_id`, or `visit_occurrence_id`) and
+#'   optionally `cohort_definition_id`, `cohort_start_date` and
+#'   `cohort_end_date`. Omit when passing a `cohort_table` directly as `cdm`.
+#' @param cohort_id Optional subset of cohorts to include when `cohort` (or a
+#'   `cohort_table` passed as `cdm`) contains multiple `cohort_definition_id`s.
+#'   Accepts integer `cohort_definition_id`s or character `cohort_name`s
+#'   (resolved against `cohort_set`).
+#' @param cohort_match How cohort entries are matched to inpatient stays when
+#'   `cohort_start_date` is present: `"overlap"` (default, visit overlaps
+#'   `[cohort_start_date, cohort_end_date]`), `"index"` (visit contains
+#'   `cohort_start_date`), or `"subject"` (all inpatient stays for subjects in
+#'   the cohort).
 #' @param person_ids Optional vector of `person_id` values to restrict to.
 #' @param visit_ids Optional vector of `visit_occurrence_id` values to restrict
 #'   to.
 #' @param start_date,end_date Optional inclusive date bounds (`Date` or
 #'   `"YYYY-MM-DD"`) on `visit_start_date`.
-#' @param n_max Optional positive integer limiting the number of stays
-#'   extracted (ordered deterministically by `visit_occurrence_id`).
+#' @param n_max Optional positive integer limiting the number of distinct
+#'   inpatient stays extracted (ordered deterministically by
+#'   `visit_occurrence_id`).
 #' @param principal Principal-diagnosis selection strategy: `"status"`
-#'   (default), `"codelist"`, `"all"`, or `"first"`. See Details.
-#' @param principal_codes Character vector of ICD-10-CM codes or prefixes
-#'   (dots optional) used when `principal = "codelist"`.
-#' @param unmatched When `principal = "codelist"` (or `"status"`), whether to
-#'   `"keep"` (default) stays without a principal diagnosis (they receive no
-#'   `seq = 1` row and group to RC 7 / DRG 999) or `"drop"` them.
+#'   (default), `"codelist"`, `"cohort_codelist"`, `"all"`, or `"first"`. See
+#'   Details.
+#' @param principal_codes Used when `principal = "codelist"`: a character
+#'   vector of ICD-10-CM codes or prefixes (dots optional), an integer vector
+#'   of OMOP `concept_id`s, a `CodelistGenerator` / `omopgenerics` codelist
+#'   (named list of concept IDs), or a data frame with a `concept_id` column.
+#' @param unmatched When `principal` is `"codelist"`, `"cohort_codelist"`, or
+#'   `"status"`, whether to `"keep"` (default) stays without a principal
+#'   diagnosis (they receive no `seq = 1` row and group to RC 7 / DRG 999) or
+#'   `"drop"` them.
 #' @param primary_status_concept_ids Integer vector of
 #'   `condition_status_concept_id` values denoting a primary diagnosis.
 #'   Defaults to `c(32902L, 32903L, 32901L)` (Primary diagnosis, Primary
@@ -427,7 +596,7 @@ omop_build_stays_query <- function(cdm, visit_concept_ids, cohort, person_ids,
 #'   `condition_type_concept_id` values denoting a primary diagnosis.
 #' @param condition_type_concept_ids Optional integer vector restricting
 #'   `condition_type_concept_id` (for example `32817L` for EHR records only).
-#' @param exclude_nlp Logical; when `condition_type_concept_ids` is `NULL`,
+#' @param exclude_nlp Logical; when `condition_type_concept_id` is `NULL`,
 #'   exclude NLP-derived conditions (`condition_type_concept_id == 32858L`).
 #'   Defaults to `TRUE`.
 #' @param dx_vocabulary Vocabulary ID for diagnoses in `concept` (default
@@ -493,12 +662,14 @@ omop_to_msdrg <- function(
     cdm,
     visit_concept_ids = c(9201L, 262L),
     cohort = NULL,
+    cohort_id = NULL,
+    cohort_match = c("overlap", "index", "subject"),
     person_ids = NULL,
     visit_ids = NULL,
     start_date = NULL,
     end_date = NULL,
     n_max = NULL,
-    principal = c("status", "codelist", "all", "first"),
+    principal = c("status", "codelist", "cohort_codelist", "all", "first"),
     principal_codes = NULL,
     unmatched = c("keep", "drop"),
     primary_status_concept_ids = c(32902L, 32903L, 32901L),
@@ -512,7 +683,22 @@ omop_to_msdrg <- function(
     discharge_map = NULL,
     default_discharge = "01",
     tables = msdrg_tables()) {
+  # Support passing a CohortConstructor / omopgenerics cohort_table directly as
+  # the first argument (extracting its attached cdm_reference).
+  if (omop_is_cohort_table(cdm)) {
+    if (!is.null(cohort)) {
+      cli::cli_abort("When {.arg cdm} is a {.cls cohort_table}, do not also pass {.arg cohort}.")
+    }
+    parent_cdm <- attr(cdm, "cdm_reference")
+    if (is.null(parent_cdm)) {
+      cli::cli_abort("{.arg cdm} is a {.cls cohort_table} without an attached {.field cdm_reference} attribute.")
+    }
+    cohort <- cdm
+    cdm <- parent_cdm
+  }
+
   omop_validate_cdm(cdm)
+  cohort_match <- rlang::arg_match(cohort_match)
   principal <- rlang::arg_match(principal)
   unmatched <- rlang::arg_match(unmatched)
   link_by <- rlang::arg_match(link_by)
@@ -520,16 +706,29 @@ omop_to_msdrg <- function(
   start_date <- omop_parse_bound_date(start_date, "start_date")
   end_date <- omop_parse_bound_date(end_date, "end_date")
 
+  coh <- omop_resolve_cohort(cdm, cohort, cohort_id)
+  parsed_codes <- NULL
   if (principal == "codelist") {
-    principal_codes <- unique(stats::na.omit(msdrg_normalize_code(principal_codes)))
-    if (length(principal_codes) == 0L) {
-      cli::cli_abort("{.arg principal_codes} must be a non-empty vector of ICD-10-CM codes or prefixes when {.code principal = \"codelist\"}.")
+    parsed_codes <- omop_parse_principal_codes(principal_codes)
+    if (length(parsed_codes$values) == 0L) {
+      cli::cli_abort("{.arg principal_codes} must be a non-empty vector of ICD-10-CM codes/prefixes or OMOP concept IDs when {.code principal = \"codelist\"}.")
+    }
+  } else if (principal == "cohort_codelist") {
+    if (is.null(coh$tbl)) {
+      cli::cli_abort("{.code principal = \"cohort_codelist\"} requires a {.pkg CohortConstructor} cohort (passed as {.arg cdm} or {.arg cohort}).")
+    }
+    if (is.null(coh$cohort_codelist) || nrow(coh$cohort_codelist) == 0L) {
+      cli::cli_abort(c(
+        "{.code principal = \"cohort_codelist\"} requires a non-empty {.field cohort_codelist} attribute on the cohort.",
+        i = "Cohorts built with {.fn CohortConstructor::conceptCohort} carry a codelist; cohorts such as {.fn CohortConstructor::demographicsCohort} do not.",
+        i = "Use {.code principal = \"status\"}, {.code \"codelist\"}, {.code \"all\"} or {.code \"first\"} instead."
+      ))
     }
   }
 
   cdm_name <- attr(cdm, "cdm_name") %||% "unknown"
   built <- omop_build_stays_query(
-    cdm, visit_concept_ids, cohort, person_ids, visit_ids,
+    cdm, visit_concept_ids, coh$tbl, cohort_match, person_ids, visit_ids,
     start_date, end_date, n_max
   )
   stays_q <- built$stays_q
@@ -554,47 +753,98 @@ omop_to_msdrg <- function(
   stays$visit_start_date <- as.Date(stays$visit_start_date)
   stays$visit_end_date <- if (built$has_visit_end) as.Date(stays$visit_end_date) else as.Date(NA)
 
-  # Apply in-memory cohort date windows if needed.
-  if (!is.null(built$local_cohort_windows) && nrow(stays) > 0L) {
-    cw <- built$local_cohort_windows
-    matched_keys <- stays |>
-      dplyr::select(".visit_key", ".person_key", "visit_start_date", "visit_end_date") |>
-      dplyr::inner_join(cw, by = ".person_key", relationship = "many-to-many") |>
-      dplyr::filter(
-        is.na(.data$cohort_end_date) & .data$visit_start_date >= .data$cohort_start_date |
-          !is.na(.data$cohort_end_date) &
-            .data$visit_start_date <= .data$cohort_end_date &
-            dplyr::coalesce(.data$visit_end_date, .data$visit_start_date) >= .data$cohort_start_date
-      ) |>
-      dplyr::pull(".visit_key") |>
-      unique()
-    stays <- stays |> dplyr::filter(.data$.visit_key %in% matched_keys)
-    if (!is.null(built$post_n_max) && nrow(stays) > built$post_n_max) {
+  # Apply in-memory cohort matching (dates & cohort_definition_id) if needed.
+  if (!is.null(built$local_cohort) && nrow(stays) > 0L) {
+    lc <- built$local_cohort
+    by_vid <- isTRUE(lc$.by_vid[[1]])
+    if (by_vid) {
       stays <- stays |>
+        dplyr::inner_join(
+          lc |> dplyr::select(".join_key", "cohort_definition_id") |> dplyr::distinct(),
+          by = c(".visit_key" = ".join_key"),
+          relationship = "many-to-many"
+        )
+    } else {
+      joined <- stays |>
+        dplyr::inner_join(
+          lc |> dplyr::select(".join_key", "cohort_definition_id", "cohort_start_date", "cohort_end_date"),
+          by = c(".person_key" = ".join_key"),
+          relationship = "many-to-many"
+        )
+      if (cohort_match == "index") {
+        joined <- joined |>
+          dplyr::filter(
+            !is.na(.data$cohort_start_date),
+            .data$visit_start_date <= .data$cohort_start_date,
+            dplyr::coalesce(.data$visit_end_date, .data$visit_start_date) >= .data$cohort_start_date
+          )
+      } else if (cohort_match == "overlap" && any(!is.na(lc$cohort_start_date))) {
+        joined <- joined |>
+          dplyr::filter(
+            is.na(.data$cohort_end_date) & .data$visit_start_date >= .data$cohort_start_date |
+              !is.na(.data$cohort_end_date) &
+                .data$visit_start_date <= .data$cohort_end_date &
+                dplyr::coalesce(.data$visit_end_date, .data$visit_start_date) >= .data$cohort_start_date
+          )
+      }
+      stays <- joined |> dplyr::select(-"cohort_start_date", -"cohort_end_date")
+    }
+    if (built$has_cohort_id) {
+      stays <- dplyr::distinct(stays, .data$cohort_definition_id, .data$.visit_key, .keep_all = TRUE)
+    } else {
+      stays <- stays |>
+        dplyr::select(-"cohort_definition_id") |>
+        dplyr::distinct(.data$.visit_key, .keep_all = TRUE)
+    }
+    if (!is.null(built$post_n_max) && dplyr::n_distinct(stays$.visit_key) > built$post_n_max) {
+      keep_vids <- stays |>
+        dplyr::distinct(.data$visit_occurrence_id, .data$.visit_key) |>
         dplyr::arrange(.data$visit_occurrence_id) |>
-        utils::head(built$post_n_max)
+        utils::head(built$post_n_max) |>
+        dplyr::pull(".visit_key")
+      stays <- stays |> dplyr::filter(.data$.visit_key %in% keep_vids)
+    }
+  }
+
+  has_cohort_id <- built$has_cohort_id && "cohort_definition_id" %in% names(stays)
+  has_cohort_name <- has_cohort_id && !is.null(coh$cohort_set) && "cohort_name" %in% names(coh$cohort_set)
+  if (has_cohort_id) {
+    stays$cohort_definition_id <- as.integer(stays$cohort_definition_id)
+    if (has_cohort_name) {
+      cset_map <- coh$cohort_set |>
+        dplyr::transmute(
+          cohort_definition_id = as.integer(.data$cohort_definition_id),
+          cohort_name = as.character(.data$cohort_name)
+        ) |>
+        dplyr::distinct(.data$cohort_definition_id, .keep_all = TRUE)
+      stays <- dplyr::left_join(stays, cset_map, by = "cohort_definition_id")
     }
   }
 
   # Handle empty stay set cleanly.
   if (nrow(stays) == 0L) {
-    empty_claims <- tibble::tibble(
-      claim_id = character(),
-      visit_occurrence_id = stays$visit_occurrence_id[0],
-      person_id = stays$person_id[0],
-      visit_start_date = as.Date(character()),
-      visit_end_date = as.Date(character()),
-      los = integer(),
-      age = integer(),
-      sex = integer(),
-      discharge_status = character(),
-      discharge_source = character(),
-      principal_code = character(),
-      principal_source = character(),
-      n_dx = integer(),
-      n_pr = integer(),
-      n_unmapped_pr = integer(),
-      has_unmapped_pr = logical()
+    empty_claims <- tibble::tibble(claim_id = character())
+    if (has_cohort_id) empty_claims$cohort_definition_id <- integer()
+    if (has_cohort_name) empty_claims$cohort_name <- character()
+    empty_claims <- dplyr::bind_cols(
+      empty_claims,
+      tibble::tibble(
+        visit_occurrence_id = stays$visit_occurrence_id[0],
+        person_id = stays$person_id[0],
+        visit_start_date = as.Date(character()),
+        visit_end_date = as.Date(character()),
+        los = integer(),
+        age = integer(),
+        sex = integer(),
+        discharge_status = character(),
+        discharge_source = character(),
+        principal_code = character(),
+        principal_source = character(),
+        n_dx = integer(),
+        n_pr = integer(),
+        n_unmapped_pr = integer(),
+        has_unmapped_pr = logical()
+      )
     )
     if (principal == "all") empty_claims$candidate_index <- integer()
     empty_dx <- tibble::tibble(claim_id = character(), seq = integer(), code = character(), poa = character())
@@ -619,6 +869,16 @@ omop_to_msdrg <- function(
     ))
   }
 
+  # Key each stay-in-cohort row uniquely; multi-cohort tables prefix claim_id
+  # with "<cohort_definition_id>:" so shared inpatient stays across cohorts stay
+  # distinct.
+  multi_cohort <- has_cohort_id && dplyr::n_distinct(stays$cohort_definition_id) > 1L
+  stays$.stay_key <- if (multi_cohort) {
+    paste0(stays$cohort_definition_id, ":", stays$.visit_key)
+  } else {
+    stays$.visit_key
+  }
+
   # --- 2. Collect deaths for scoped persons ----------------------------------
   died <- rep(FALSE, nrow(stays))
   if ("death" %in% names(cdm)) {
@@ -630,7 +890,7 @@ omop_to_msdrg <- function(
       deaths$.person_key <- omop_id_chr(deaths$person_id)
       deaths$death_date <- as.Date(deaths$death_date)
       dead_keys <- stays |>
-        dplyr::select(".visit_key", ".person_key", "visit_start_date", "visit_end_date") |>
+        dplyr::distinct(.data$.visit_key, .data$.person_key, .data$visit_start_date, .data$visit_end_date) |>
         dplyr::inner_join(deaths |> dplyr::select(".person_key", "death_date"), by = ".person_key", relationship = "many-to-many") |>
         dplyr::filter(
           !is.na(.data$death_date),
@@ -649,10 +909,11 @@ omop_to_msdrg <- function(
   if (link_by == "visit_id" && !"visit_occurrence_id" %in% co_cols) {
     cli::cli_abort("{.field visit_occurrence_id} is absent from {.field condition_occurrence}; use {.code link_by = \"date_overlap\"}.")
   }
+  stays_vids_q <- dplyr::distinct(stays_q, .data$visit_occurrence_id, .keep_all = TRUE)
   co_scoped <- if (link_by == "visit_id") {
-    dplyr::semi_join(co, stays_q, by = "visit_occurrence_id")
+    dplyr::semi_join(co, stays_vids_q, by = "visit_occurrence_id")
   } else {
-    vo_win <- stays_q |>
+    vo_win <- stays_vids_q |>
       dplyr::select("visit_occurrence_id", "person_id", "visit_start_date", dplyr::any_of("visit_end_date"))
     co_j <- dplyr::inner_join(co |> dplyr::select(-dplyr::any_of("visit_occurrence_id")), vo_win, by = "person_id")
     if (built$has_visit_end) {
@@ -676,6 +937,7 @@ omop_to_msdrg <- function(
 
   dx_keep <- intersect(
     c("visit_occurrence_id", "condition_occurrence_id", "condition_start_date",
+      "condition_concept_id", "condition_source_concept_id",
       "condition_status_concept_id", "condition_type_concept_id"),
     colnames(co_scoped)
   )
@@ -697,7 +959,7 @@ omop_to_msdrg <- function(
   # ICD-10-CM concepts.
   if (isTRUE(snomed_fallback) && "concept_relationship" %in% names(cdm)) {
     stays_with_src <- if (nrow(dx_raw) > 0L) unique(omop_id_chr(dx_raw$visit_occurrence_id)) else character()
-    if (length(stays_with_src) < nrow(stays)) {
+    if (length(stays_with_src) < dplyr::n_distinct(stays$.visit_key)) {
       dx_snomed <- co_scoped |>
         dplyr::inner_join(
           cdm$concept_relationship |>
@@ -759,14 +1021,15 @@ omop_to_msdrg <- function(
     } else {
       as.character(seq_len(nrow(dx_raw)))
     }
+    dx_raw$is_billable <- dx_raw$code %in% valid_dx_codes
+    dx_raw$is_header <- !dx_raw$is_billable & dx_raw$code %in% header_prefixes
+    dx_raw$.cond_cid <- if ("condition_concept_id" %in% names(dx_raw)) as.integer(dx_raw$condition_concept_id) else NA_integer_
+    dx_raw$.src_cid <- if ("condition_source_concept_id" %in% names(dx_raw)) as.integer(dx_raw$condition_source_concept_id) else NA_integer_
+
     # Deduplicate (stay, code), retaining primary flag and earliest date/id.
     dx_dedup <- dx_raw |>
       dplyr::arrange(.data$.visit_key, .data$code, dplyr::desc(.data$is_primary), .data$dx_date, .data$dx_id_chr) |>
-      dplyr::distinct(.data$.visit_key, .data$code, .keep_all = TRUE) |>
-      dplyr::mutate(
-        is_billable = .data$code %in% valid_dx_codes,
-        is_header = !.data$is_billable & .data$code %in% header_prefixes
-      )
+      dplyr::distinct(.data$.visit_key, .data$code, .keep_all = TRUE)
   } else {
     dx_dedup <- tibble::tibble(
       .visit_key = character(), code = character(), is_primary = logical(),
@@ -785,9 +1048,9 @@ omop_to_msdrg <- function(
       cli::cli_abort("{.field visit_occurrence_id} is absent from {.field procedure_occurrence}; use {.code link_by = \"date_overlap\"}.")
     }
     po_scoped <- if (link_by == "visit_id") {
-      dplyr::semi_join(po, stays_q, by = "visit_occurrence_id")
+      dplyr::semi_join(po, stays_vids_q, by = "visit_occurrence_id")
     } else {
-      vo_win <- stays_q |>
+      vo_win <- stays_vids_q |>
         dplyr::select("visit_occurrence_id", "person_id", "visit_start_date", dplyr::any_of("visit_end_date"))
       po_j <- dplyr::inner_join(po |> dplyr::select(-dplyr::any_of("visit_occurrence_id")), vo_win, by = "person_id")
       if (built$has_visit_end && "procedure_date" %in% po_cols) {
@@ -874,6 +1137,7 @@ omop_to_msdrg <- function(
   dx_counts <- dx_dedup |> dplyr::count(.data$.visit_key, name = "n_dx")
 
   base_stays <- tibble::tibble(
+    .stay_key = stays$.stay_key,
     .visit_key = stays$.visit_key,
     visit_occurrence_id = stays$visit_occurrence_id,
     person_id = stays$person_id,
@@ -884,7 +1148,11 @@ omop_to_msdrg <- function(
     sex = as.integer(sex),
     discharge_status = disc$discharge_status,
     discharge_source = disc$discharge_source
-  ) |>
+  )
+  if (has_cohort_id) base_stays$cohort_definition_id <- stays$cohort_definition_id
+  if (has_cohort_name) base_stays$cohort_name <- stays$cohort_name
+
+  base_stays <- base_stays |>
     dplyr::left_join(dx_counts, by = ".visit_key") |>
     dplyr::left_join(pr_counts, by = ".visit_key") |>
     dplyr::mutate(
@@ -893,6 +1161,11 @@ omop_to_msdrg <- function(
       n_unmapped_pr = dplyr::coalesce(.data$n_unmapped_pr, 0L),
       has_unmapped_pr = .data$n_unmapped_pr > 0L
     )
+
+  cohort_cols <- c(
+    if (has_cohort_id) "cohort_definition_id",
+    if (has_cohort_name) "cohort_name"
+  )
 
   # --- 6. Apply principal-diagnosis strategy ---------------------------------
   n_stays_with_primary_status <- dplyr::n_distinct(dx_dedup$.visit_key[dx_dedup$is_primary])
@@ -909,22 +1182,24 @@ omop_to_msdrg <- function(
       dplyr::mutate(principal_source = "all")
 
     no_dx_stays <- base_stays |>
+      dplyr::distinct(.data$.visit_key, .data$n_dx) |>
       dplyr::filter(.data$n_dx == 0L) |>
       dplyr::transmute(.data$.visit_key, candidate_index = 0L, principal_code = NA_character_, principal_source = "none")
 
     cand_all <- dplyr::bind_rows(cand, no_dx_stays)
-    claims <- cand_all |>
-      dplyr::inner_join(base_stays, by = ".visit_key") |>
-      dplyr::mutate(claim_id = paste0(.data$.visit_key, "#", .data$candidate_index)) |>
+    claims <- base_stays |>
+      dplyr::inner_join(cand_all, by = ".visit_key", relationship = "many-to-many") |>
+      dplyr::mutate(claim_id = paste0(.data$.stay_key, "#", .data$candidate_index)) |>
       dplyr::select(
-        "claim_id", "visit_occurrence_id", "person_id", "candidate_index",
+        "claim_id", dplyr::all_of(cohort_cols),
+        "visit_occurrence_id", "person_id", "candidate_index",
         "visit_start_date", "visit_end_date", "los", "age", "sex",
         "discharge_status", "discharge_source", "principal_code", "principal_source",
         "n_dx", "n_pr", "n_unmapped_pr", "has_unmapped_pr", ".visit_key"
       )
 
-    diagnoses <- cand |>
-      dplyr::mutate(claim_id = paste0(.data$.visit_key, "#", .data$candidate_index)) |>
+    diagnoses <- claims |>
+      dplyr::filter(.data$principal_source != "none") |>
       dplyr::select("claim_id", ".visit_key", "principal_code") |>
       dplyr::inner_join(dx_dedup |> dplyr::select(".visit_key", "code"), by = ".visit_key", relationship = "many-to-many") |>
       dplyr::arrange(.data$claim_id, .data$code != .data$principal_code, .data$code) |>
@@ -942,13 +1217,14 @@ omop_to_msdrg <- function(
       dplyr::ungroup() |>
       dplyr::select("claim_id", "seq", "code")
   } else {
-    # One claim per stay.
+    # One claim per stay (or per cohort-stay pair in a multi-cohort table).
+    chosen_by_stay <- FALSE
     if (principal == "status") {
       if (n_stays_with_primary_status == 0L && nrow(dx_dedup) > 0L) {
         cli::cli_inform(c(
           "!" = "No primary diagnosis flags found in {.field condition_status_concept_id} (or legacy {.field condition_type_concept_id}).",
           i = "Stays without a principal diagnosis will group to DRG 999 (return code 7).",
-          i = "Supply {.code principal = \"codelist\"} with {.arg principal_codes}, {.code principal = \"all\"} for a multi-candidate sensitivity analysis, or {.code principal = \"first\"}."
+          i = "Supply {.code principal = \"codelist\"} with {.arg principal_codes}, {.code principal = \"cohort_codelist\"} (with a {.pkg CohortConstructor} concept cohort), {.code principal = \"all\"} for a multi-candidate sensitivity analysis, or {.code principal = \"first\"}."
         ))
       }
       chosen <- dx_dedup |>
@@ -957,13 +1233,63 @@ omop_to_msdrg <- function(
         dplyr::distinct(.data$.visit_key, .keep_all = TRUE) |>
         dplyr::transmute(.data$.visit_key, principal_code = .data$code, principal_source = "status")
     } else if (principal == "codelist") {
-      m <- omop_match_codelist(dx_dedup$code, principal_codes)
-      chosen <- dx_dedup |>
-        dplyr::mutate(.rank = m$rank, .exact = m$exact) |>
-        dplyr::filter(is.finite(.data$.rank)) |>
-        dplyr::arrange(.data$.visit_key, .data$.rank, dplyr::desc(.data$is_billable), dplyr::desc(.data$.exact), .data$dx_date, .data$code) |>
-        dplyr::distinct(.data$.visit_key, .keep_all = TRUE) |>
-        dplyr::transmute(.data$.visit_key, principal_code = .data$code, principal_source = "codelist")
+      if (parsed_codes$type == "code") {
+        m <- omop_match_codelist(dx_dedup$code, parsed_codes$values)
+        chosen <- dx_dedup |>
+          dplyr::mutate(.rank = m$rank, .exact = m$exact) |>
+          dplyr::filter(is.finite(.data$.rank)) |>
+          dplyr::arrange(.data$.visit_key, .data$.rank, dplyr::desc(.data$is_billable), dplyr::desc(.data$.exact), .data$dx_date, .data$code) |>
+          dplyr::distinct(.data$.visit_key, .keep_all = TRUE) |>
+          dplyr::transmute(.data$.visit_key, principal_code = .data$code, principal_source = "codelist")
+      } else {
+        # Concept-ID codelist (e.g. CodelistGenerator / omopgenerics codelist).
+        cids <- parsed_codes$values
+        if (nrow(dx_raw) > 0L) {
+          r_std <- match(dx_raw$.cond_cid, cids)
+          r_src <- match(dx_raw$.src_cid, cids)
+          rank <- pmin(dplyr::coalesce(r_std, Inf), dplyr::coalesce(r_src, Inf))
+          chosen <- dx_raw |>
+            dplyr::mutate(.rank = rank) |>
+            dplyr::filter(is.finite(.data$.rank)) |>
+            dplyr::arrange(.data$.visit_key, .data$.rank, dplyr::desc(.data$is_billable), .data$dx_date, .data$dx_id_chr, .data$code) |>
+            dplyr::distinct(.data$.visit_key, .keep_all = TRUE) |>
+            dplyr::transmute(.data$.visit_key, principal_code = .data$code, principal_source = "codelist")
+        } else {
+          chosen <- tibble::tibble(.visit_key = character(), principal_code = character(), principal_source = character())
+        }
+      }
+    } else if (principal == "cohort_codelist") {
+      # Use CohortConstructor's per-cohort defining concept_ids to choose the
+      # principal diagnosis for each (cohort_definition_id, visit_occurrence_id).
+      chosen_by_stay <- TRUE
+      cc <- coh$cohort_codelist
+      if ("codelist_type" %in% names(cc) && any(cc$codelist_type == "index event", na.rm = TRUE)) {
+        cc <- dplyr::filter(cc, .data$codelist_type == "index event")
+      }
+      cc <- cc |>
+        dplyr::transmute(
+          cohort_definition_id = as.integer(.data$cohort_definition_id),
+          concept_id = as.integer(.data$concept_id)
+        ) |>
+        dplyr::distinct()
+
+      if (nrow(dx_raw) > 0L && has_cohort_id) {
+        stay_dx <- base_stays |>
+          dplyr::select(".stay_key", ".visit_key", "cohort_definition_id") |>
+          dplyr::inner_join(
+            dx_raw |> dplyr::select(".visit_key", "code", "is_billable", "dx_date", "dx_id_chr", ".cond_cid", ".src_cid"),
+            by = ".visit_key",
+            relationship = "many-to-many"
+          )
+        hit_std <- dplyr::inner_join(stay_dx, cc, by = c("cohort_definition_id", ".cond_cid" = "concept_id"))
+        hit_src <- dplyr::inner_join(stay_dx, cc, by = c("cohort_definition_id", ".src_cid" = "concept_id"))
+        chosen <- dplyr::bind_rows(hit_std, hit_src) |>
+          dplyr::arrange(.data$.stay_key, dplyr::desc(.data$is_billable), .data$dx_date, .data$dx_id_chr, .data$code) |>
+          dplyr::distinct(.data$.stay_key, .keep_all = TRUE) |>
+          dplyr::transmute(.data$.stay_key, principal_code = .data$code, principal_source = "cohort_codelist")
+      } else {
+        chosen <- tibble::tibble(.stay_key = character(), principal_code = character(), principal_source = character())
+      }
     } else {
       # principal == "first"
       chosen <- dx_dedup |>
@@ -972,14 +1298,16 @@ omop_to_msdrg <- function(
         dplyr::transmute(.data$.visit_key, principal_code = .data$code, principal_source = "first")
     }
 
+    join_key <- if (chosen_by_stay) ".stay_key" else ".visit_key"
     claims <- base_stays |>
-      dplyr::left_join(chosen, by = ".visit_key") |>
+      dplyr::left_join(chosen, by = join_key) |>
       dplyr::mutate(
-        claim_id = .data$.visit_key,
+        claim_id = .data$.stay_key,
         principal_source = dplyr::coalesce(.data$principal_source, "none")
       ) |>
       dplyr::select(
-        "claim_id", "visit_occurrence_id", "person_id",
+        "claim_id", dplyr::all_of(cohort_cols),
+        "visit_occurrence_id", "person_id",
         "visit_start_date", "visit_end_date", "los", "age", "sex",
         "discharge_status", "discharge_source", "principal_code", "principal_source",
         "n_dx", "n_pr", "n_unmapped_pr", "has_unmapped_pr", ".visit_key"
@@ -993,7 +1321,11 @@ omop_to_msdrg <- function(
     # Stays with principal_source == "none" start secondary diagnoses at seq = 2
     # so msdrg_group() recognises the absent principal diagnosis (RC 7).
     diagnoses <- dx_dedup |>
-      dplyr::inner_join(claims |> dplyr::select("claim_id", ".visit_key", "principal_code"), by = ".visit_key") |>
+      dplyr::inner_join(
+        claims |> dplyr::select("claim_id", ".visit_key", "principal_code"),
+        by = ".visit_key",
+        relationship = "many-to-many"
+      ) |>
       dplyr::mutate(.is_pdx = !is.na(.data$principal_code) & .data$code == .data$principal_code) |>
       dplyr::arrange(.data$claim_id, dplyr::desc(.data$.is_pdx), .data$dx_date, .data$code) |>
       dplyr::group_by(.data$claim_id) |>
@@ -1005,7 +1337,11 @@ omop_to_msdrg <- function(
       dplyr::select("claim_id", "seq", "code", "poa")
 
     procedures <- pr_dedup |>
-      dplyr::inner_join(claims |> dplyr::select("claim_id", ".visit_key"), by = ".visit_key") |>
+      dplyr::inner_join(
+        claims |> dplyr::select("claim_id", ".visit_key"),
+        by = ".visit_key",
+        relationship = "many-to-many"
+      ) |>
       dplyr::arrange(.data$claim_id, .data$pr_date, .data$code) |>
       dplyr::group_by(.data$claim_id) |>
       dplyr::mutate(seq = dplyr::row_number()) |>
@@ -1014,12 +1350,13 @@ omop_to_msdrg <- function(
   }
 
   # --- 7. Quality / readiness summary ----------------------------------------
-  n_stays_total <- nrow(base_stays)
-  n_with_dx <- sum(base_stays$n_dx > 0L)
-  n_with_pr <- sum(base_stays$n_pr > 0L)
-  n_with_unmapped_pr <- sum(base_stays$has_unmapped_pr)
+  unique_stays <- dplyr::distinct(base_stays, .data$.visit_key, .keep_all = TRUE)
+  n_stays_total <- nrow(unique_stays)
+  n_with_dx <- sum(unique_stays$n_dx > 0L)
+  n_with_pr <- sum(unique_stays$n_pr > 0L)
+  n_with_unmapped_pr <- sum(unique_stays$has_unmapped_pr)
   n_with_principal <- dplyr::n_distinct(claims$.visit_key[claims$principal_source != "none"])
-  dx_per_coded_stay <- base_stays$n_dx[base_stays$n_dx > 0L]
+  dx_per_coded_stay <- unique_stays$n_dx[unique_stays$n_dx > 0L]
 
   dx_validity <- if (nrow(dx_dedup) > 0L) {
     dx_dedup |>
@@ -1060,13 +1397,27 @@ omop_to_msdrg <- function(
     pct_stays_with_pr = 100 * n_with_pr / n_stays_total,
     n_stays_with_unmapped_pr = n_with_unmapped_pr,
     pct_stays_with_unmapped_pr = 100 * n_with_unmapped_pr / n_stays_total,
-    discharge_sources = base_stays |> dplyr::count(.data$discharge_source, sort = TRUE),
+    discharge_sources = unique_stays |> dplyr::count(.data$discharge_source, sort = TRUE),
     dx_code_validity = dx_validity,
     top_category_headers = top_headers
   )
+  if (has_cohort_id) {
+    quality$cohorts <- claims |>
+      dplyr::group_by(dplyr::across(dplyr::all_of(cohort_cols))) |>
+      dplyr::summarise(
+        n_stays = dplyr::n_distinct(.data$.visit_key),
+        n_claims = dplyr::n(),
+        n_with_principal = sum(.data$principal_source != "none"),
+        .groups = "drop"
+      )
+  }
 
   claims <- dplyr::select(claims, -".visit_key")
-  if (principal == "all") {
+  if (has_cohort_id && principal == "all") {
+    claims <- dplyr::arrange(claims, .data$cohort_definition_id, .data$visit_occurrence_id, .data$candidate_index)
+  } else if (has_cohort_id) {
+    claims <- dplyr::arrange(claims, .data$cohort_definition_id, .data$visit_occurrence_id)
+  } else if (principal == "all") {
     claims <- dplyr::arrange(claims, .data$visit_occurrence_id, .data$candidate_index)
   } else {
     claims <- dplyr::arrange(claims, .data$visit_occurrence_id)
@@ -1103,29 +1454,34 @@ print.omop_msdrg_input <- function(x, ...) {
   invisible(x)
 }
 
-#' Compute MS-DRGs for patients in an OMOP CDM
+#' Compute MS-DRGs for patients in an OMOP CDM or `CohortConstructor` cohort
 #'
-#' Given a `cdm_reference` object from `CDMConnector` (or `omopgenerics`),
-#' extracts the scoped inpatient stays with [omop_to_msdrg()], groups them with
-#' [msdrg_group()], and returns a tibble with one row per stay (or per
-#' candidate principal diagnosis when `principal = "all"`), combining the OMOP
-#' patient/visit identifiers and quality flags with the assigned MS-DRG.
+#' Given a `cdm_reference` object from `CDMConnector` (or `omopgenerics`) — or
+#' directly a `CohortConstructor` `cohort_table` — extracts the scoped
+#' inpatient stays with [omop_to_msdrg()], groups them with [msdrg_group()],
+#' and returns a tibble with one row per stay (or per cohort-stay pair in a
+#' multi-cohort table, or per candidate principal diagnosis when
+#' `principal = "all"`), combining the OMOP cohort/patient/visit identifiers
+#' and quality flags with the assigned MS-DRG.
 #'
 #' This function can also be invoked through the unified interface via
-#' `group(grouper("msdrg"), cdm, ...)`.
+#' `group(grouper("msdrg"), cdm, ...)` or
+#' `group(grouper("msdrg"), cdm$my_cohort, ...)`.
 #'
 #' @param cdm A `cdm_reference` object (from `CDMConnector::cdmFromCon()` or
-#'   `omopgenerics::cdmFromTables()`) or a named list of OMOP tables.
+#'   `omopgenerics::cdmFromTables()`), a `CohortConstructor` `cohort_table`, or
+#'   a named list of OMOP tables.
 #' @param tables MS-DRG logic tables from [msdrg_tables()] or a version label
 #'   such as `"44.0"`.
 #' @param poa_exempt Hospital's POA-reporting status passed to [msdrg_group()].
 #'   Defaults to `"exempt"` because standard OMOP CDMs do not carry CMS
 #'   present-on-admission indicators.
 #' @param ... Additional arguments passed to [omop_to_msdrg()] (such as
-#'   `cohort`, `start_date`, `end_date`, `n_max`, `principal`,
-#'   `principal_codes`, `unmatched`, `discharge_map`, `default_discharge`,
-#'   `snomed_fallback`, `link_by`).
-#' @return A tibble with OMOP stay columns (`claim_id`, `visit_occurrence_id`,
+#'   `cohort`, `cohort_id`, `cohort_match`, `start_date`, `end_date`, `n_max`,
+#'   `principal`, `principal_codes`, `unmatched`, `discharge_map`,
+#'   `default_discharge`, `snomed_fallback`, `link_by`).
+#' @return A tibble with OMOP stay columns (`claim_id`, optional
+#'   `cohort_definition_id` and `cohort_name`, `visit_occurrence_id`,
 #'   `person_id`, `visit_start_date`, `visit_end_date`, `los`, `age`, `sex`,
 #'   `discharge_status`, `discharge_source`, `principal_code`,
 #'   `principal_source`, `n_dx`, `n_pr`, `has_unmapped_pr`, plus
