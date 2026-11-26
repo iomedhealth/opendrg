@@ -431,6 +431,170 @@ group(grouper("pso", version = "2025-26-v2"), cdm$uk_cohort, principal = "cohort
 See `dev/omop-cdm-example.R` for a complete runnable script against a live
 PostgreSQL OMOP CDM.
 
+#### OMOP CDM entity-relationship & output schema
+
+The diagram below shows the OMOP CDM v5.3/v5.4 tables (and optional
+`CohortConstructor` `cohort_table`) read by `omop_to_msdrg()` / `omop_to_hrg()`
+and the resulting casemix outputs (`omop_msdrg()`, `omop_hrg()`, and
+`group(grouper("pso"), cdm)`):
+
+```mermaid
+erDiagram
+    PERSON {
+        bigint person_id PK
+        int gender_concept_id
+        datetime birth_datetime
+        int year_of_birth
+        int month_of_birth
+        int day_of_birth
+    }
+
+    DEATH {
+        bigint person_id PK "FK -> PERSON (optional)"
+        date death_date
+    }
+
+    COHORT_TABLE {
+        int cohort_definition_id PK "optional CohortConstructor"
+        bigint subject_id FK "-> PERSON"
+        date cohort_start_date
+        date cohort_end_date
+        string cohort_name "attr: cohort_set"
+        int concept_id "attr: cohort_codelist"
+    }
+
+    VISIT_OCCURRENCE {
+        bigint visit_occurrence_id PK
+        bigint person_id FK
+        int visit_concept_id "9201 / 262"
+        date visit_start_date
+        date visit_end_date
+        int discharged_to_concept_id "v5.3: discharge_to_*"
+        string discharged_to_source_value
+        int admitted_from_concept_id "HRG4+ (v5.3: admitting_source_*)"
+        bigint provider_id FK "HRG4+"
+        bigint care_site_id FK "HRG4+/PSO"
+    }
+
+    VISIT_DETAIL {
+        bigint visit_detail_id PK "optional HRG4+ FCEs"
+        bigint visit_occurrence_id FK
+        date visit_detail_start_date
+        date visit_detail_end_date
+        bigint provider_id FK
+    }
+
+    CONDITION_OCCURRENCE {
+        bigint condition_occurrence_id PK
+        bigint visit_occurrence_id FK
+        bigint visit_detail_id FK "optional HRG4+"
+        int condition_source_concept_id FK "ICD10CM / ICD10"
+        int condition_concept_id FK "standard / cohort_codelist"
+        int condition_status_concept_id "32902 / 32903 / 32901"
+        int condition_type_concept_id "excl. 32858 NLP"
+        date condition_start_date
+    }
+
+    PROCEDURE_OCCURRENCE {
+        bigint procedure_occurrence_id PK
+        bigint visit_occurrence_id FK
+        bigint visit_detail_id FK "optional HRG4+"
+        int procedure_concept_id FK "ICD10PCS / OPCS4"
+        int procedure_source_concept_id FK "ICD10PCS / OPCS4"
+        date procedure_date
+    }
+
+    PROVIDER {
+        bigint provider_id PK "optional HRG4+/PSO"
+        int specialty_concept_id "-> MAINSPEF / TRETSPEF"
+        string specialty_source_value
+    }
+
+    CARE_SITE {
+        bigint care_site_id PK "optional HRG4+/PSO"
+        string care_site_source_value "-> PROCODET"
+    }
+
+    CONCEPT {
+        int concept_id PK
+        string vocabulary_id "ICD10CM / ICD10PCS / ICD10 / OPCS4 / UB04"
+        string concept_code
+    }
+
+    CONCEPT_RELATIONSHIP {
+        int concept_id_1 FK "vocabulary_fallback"
+        int concept_id_2 FK
+        string relationship_id "Maps to"
+    }
+
+    OMOP_MSDRG_OUTPUT {
+        string claim_id PK
+        int cohort_definition_id "optional"
+        string cohort_name "optional"
+        bigint visit_occurrence_id FK
+        bigint person_id FK
+        string principal_code
+        string principal_source
+        int drg
+        int initial_drg
+        int base_drg
+        int mdc
+        string med_surg
+        string severity
+        int return_code
+        string drg_description
+        bool has_unmapped_pr
+    }
+
+    OMOP_HRG_EPISODES {
+        string episode_id PK
+        int cohort_definition_id "optional"
+        string cohort_name "optional"
+        bigint visit_occurrence_id FK
+        bigint visit_detail_id FK "optional"
+        bigint person_id FK
+        string fce_hrg
+        string grouping_method
+        string dominant_procedure
+        string unbundled_hrgs
+        string fce_pbc
+        string spell_hrg
+        string service_line "PSO: group(pso)"
+        string fce_npoc "PSO: group(pso)"
+    }
+
+    OMOP_HRG_SPELLS {
+        int spell PK
+        string cohort_name "optional"
+        bigint visit_occurrence_id FK
+        bigint person_id FK
+        string spell_hrg
+        int spell_episode_count
+        num spell_los
+        string spell_unbundled_hrgs
+        string spell_service_line "PSO: group(pso)"
+    }
+
+    PERSON ||--o{ VISIT_OCCURRENCE : "has stays"
+    PERSON ||--o| DEATH : "in-stay mortality"
+    COHORT_TABLE }o--o{ VISIT_OCCURRENCE : "scopes stays (overlap/index/subject)"
+    VISIT_OCCURRENCE ||--o{ VISIT_DETAIL : "FCEs (episodes = visit_detail)"
+    VISIT_OCCURRENCE ||--o{ CONDITION_OCCURRENCE : "diagnoses"
+    VISIT_OCCURRENCE ||--o{ PROCEDURE_OCCURRENCE : "procedures"
+    VISIT_DETAIL |o--o{ CONDITION_OCCURRENCE : "FCE diagnoses"
+    VISIT_DETAIL |o--o{ PROCEDURE_OCCURRENCE : "FCE procedures"
+    PROVIDER |o--o{ VISIT_OCCURRENCE : "specialty (HRG4+)"
+    PROVIDER |o--o{ VISIT_DETAIL : "FCE specialty (HRG4+)"
+    CARE_SITE |o--o{ VISIT_OCCURRENCE : "provider code (HRG4+)"
+    CONDITION_OCCURRENCE }o--|| CONCEPT : "source / UB04 lookup"
+    PROCEDURE_OCCURRENCE }o--|| CONCEPT : "ICD10PCS / OPCS4"
+    CONDITION_OCCURRENCE }o--o{ CONCEPT_RELATIONSHIP : "vocabulary_fallback"
+    CONCEPT_RELATIONSHIP }o--|| CONCEPT : "Maps to"
+    VISIT_OCCURRENCE ||--o{ OMOP_MSDRG_OUTPUT : "omop_msdrg() + quality"
+    VISIT_OCCURRENCE ||--o{ OMOP_HRG_SPELLS : "omop_hrg() + quality"
+    OMOP_HRG_SPELLS ||--|{ OMOP_HRG_EPISODES : "1..N episodes per spell"
+```
+
 ## Glossary
 
 | Term | Meaning |
