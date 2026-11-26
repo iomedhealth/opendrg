@@ -61,3 +61,34 @@ candidate claims, grouped in 27 s ≈ 550 claims/s).
 * Map the local procedure catalogue to ICD-10-PCS (or SNOMED with PCS descendants).
 * `discharged_to_concept_id` from the site list, with the list documented in the ETL reference.
 * Keep `condition_source_concept_id` at the billable (full-length) ICD-10-CM code.
+
+## 5. Hot-patched 2024 proof-of-concept & APR-GRD concordance (`dev/omop-hot-etl-trial.R`)
+
+Read-only inspection of the hospital's `raw` schema confirmed that all missing fields already
+exist upstream and were dropped during ETL:
+
+* `raw.cod_codifepi` carries `tipo_diag` (`P` / `S`) on 100 % of rows (4.27M rows) and `orden = 1`
+  on 99.97 % of episodes, plus `dpi` (Spanish RAE-CMBD POA `S/N/D/I/E`).
+* `raw.cod_diccionario` (`catalogo = 10`, `seccion = 'P'`) carries 7-character CIE-10-ES /
+  ICD-10-PCS codes across 85.1 % of 2024 stays (9,659 / 10,375 procedure rows = 93.1 % valid PCS).
+  Crucially, `codigo_1` holds hospital-local sub-extensions on 19.4 % of primary diagnoses
+  (`C67.9XXX.0`, `N20.0XXX.1`) and ~11 % of procedures, while **`codigo_2`** holds the clean
+  official CIE-10-ES code; using `COALESCE(NULLIF(TRIM(codigo_2), ''), TRIM(codigo_1))` removes
+  almost all invalid codes.
+* `raw.adm_destinoalta` supplies the exact site discharge list (`1` Domicilio, `2` Traslado,
+  `3` Alta voluntaria, `4` Alta in extremis, `5` Paciente Exitus, `6` Fuga, `7` H2M).
+
+Patching the 2024 OMOP tables in memory (read-only) and running `omop_msdrg(..., principal = "status")`
+with MS-DRG v44.0 (zero heuristics, 11.8 s):
+
+* **Grouped cleanly (RC 0)**: **5,114 / 5,126 stays (99.8 %)** (up from 0.0 %); only 11 uncoded
+  stays and 1 retired code (`I20.8`).
+* **Surgical DRG share**: **57.0 %** (2,915 surgical / 2,199 medical, up from 2.7 % under codelist).
+  Top DRGs: 661 (kidney/ureter non-neoplasm w/o CC/MCC, 429), 670 (transurethral w/o CC/MCC, 266),
+  699 (other kidney/urinary dx w/ CC, 265), 660 (kidney/ureter w/ CC, 241), 714/713 (TURP, 325).
+* **Concordance with official hospital APR-GRD (`raw.fac_epihosp`, n = 3,381 matched Jan–Aug 2024 stays)**:
+  official APR-GRD weight (`num_pesogrd`) increases monotonically across every `med_surg × severity`
+  cell — Medical NCC 0.463 / CC 0.580 / MCC 0.835; Surgical NCC 0.922 / CC 1.188 / MCC 2.173
+  (median LOS 2 / 3 / 4 d medical; 2 / 3 / 7 d surgical). `opendrg` MS-DRG explains
+  **$R^2 = 0.624$** of $\log(\text{APR weight})$ and **$R^2 = 0.338$** of $\log(\text{LOS} + 1)$
+  (vs. **$0.290$** for the hospital's own APR-GRD `cod_grd`).
