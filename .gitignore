@@ -11,8 +11,9 @@
 /dev/oracle/output/*.csv
 /dev/oracle/java/*.class
 
-# Local agent tooling
+# Local agent tooling & private slide decks
 /opencode.json
+/decks/
 /dev/oracle/java/build/
 /tests/testthat/_problems/
 /article/*.log
