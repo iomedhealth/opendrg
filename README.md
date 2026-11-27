@@ -684,6 +684,19 @@ Actions.
   second); MS-DRG groups about 1,200 claims per second. Vectorisation and a
   dbplyr (in-database) backend are planned.
 
+## Authors
+
+* **Gabriel Maeztu** — IOMED Medical Solutions S.L., Barcelona, Spain
+  (`gabriel.maeztu@iomed.health`)
+* **Gianluca Fabiano** — [Health Economics and Outcomes Research (HEOR)](https://github.com/HEOR-NDORMS),
+  Nuffield Department of Orthopaedics, Rheumatology and Musculoskeletal
+  Sciences (NDORMS), University of Oxford, Oxford, UK
+  (`gianluca.fabiano@ndorms.ox.ac.uk`)
+* **Rafael Pinedo-Villanueva** — [Health Economics and Outcomes Research (HEOR)](https://github.com/HEOR-NDORMS),
+  Nuffield Department of Orthopaedics, Rheumatology and Musculoskeletal
+  Sciences (NDORMS), University of Oxford, Oxford, UK
+  (`rafael.pinedo@ndorms.ox.ac.uk`)
+
 ## Licensing
 
 Package code is MIT. Bundled logic tables are derived from publicly released
